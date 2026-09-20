@@ -6,7 +6,7 @@
 
 const competitionRegistry = {
   lafayette: {
-    spreadsheetId: "YOUR_LAFAYETTE_SPREADSHEET_ID_HERE",
+    spreadsheetId: "10e1ghOqkzOyNt7lPOC_TRiw_WWPU2cIHVzxUK_YCPd4",
     tabs: {
       "2026": "Lafayette Contest of Champions - 2026 Prelims - 9/26/26",
       "2025": "Lafayette Contest of Champions - 2025 - 9/20/25",
@@ -30,7 +30,7 @@ const competitionRegistry = {
   },
 
   renegade: {
-    spreadsheetId: "YOUR_RENEGADE_SPREADSHEET_ID_HERE",
+    spreadsheetId: "1aOD7KDcLPMYkFEkxQUcoYY48amnPMWs01s96t6yNqJo",
     tabs: {
       "2026": "Renegade Review - 2026 - 10/10/26",
       "2025": "Renegade Review - 2025 - 10/11/25",
@@ -53,7 +53,7 @@ const competitionRegistry = {
   },
 
   boastl: {
-    spreadsheetId: "YOUR_BOA_STL_SPREADSHEET_ID_HERE",
+    spreadsheetId: "1ipg6FG-omTfFcDLieyOO1wQbHfWLJIG1aiZAS9bZJh4",
     tabs: {
       "2026": "BOA St Louis - 2026 Prelims",
       "2025": "BOA St Louis - 2025 Finals - 10/18/25",
@@ -78,7 +78,7 @@ const competitionRegistry = {
   },
 
   brokenarrow: {
-    spreadsheetId: "YOUR_BROKEN_ARROW_SPREADSHEET_ID_HERE",
+    spreadsheetId: "1iatqDcFWffwrRzMKMDXUy5hAizRhfxYqGFSmOpzlQ7s",
     tabs: {
       "2026": "Broken Arrow Invitational - 2026 - 9/19/26",
       "2025": "Broken Arrow Invitational - 2025 - 9/20/25",
@@ -103,7 +103,7 @@ const competitionRegistry = {
   },
 
   deercreek: {
-    spreadsheetId: "YOUR_DEER_CREEK_SPREADSHEET_ID_HERE",
+    spreadsheetId: "1XTo8j1gzAYEbnaIYbGSjWaKMCqCXTM484-6Q29Gcy_k",
     tabs: {
       "2026": "Deer Creek Invitational - 2026 - 9/19/26",
       "2025": "Deer Creek Invitational - 2025 - 9/20/25",
