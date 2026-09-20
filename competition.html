@@ -4,9 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Competition Profile & Recap Hub</title>
+  
+  <!-- CDNs -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  
   <link rel="stylesheet" href="competition.css" />
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen p-4 sm:p-6 lg:p-8">
@@ -31,32 +35,38 @@
         <p id="contestSubtitle" class="text-xs sm:text-sm text-slate-400 mt-0.5">Fetching event scores, caption recaps, and rankings...</p>
       </div>
 
-      <!-- Live Quick-Switch Selector -->
+      <!-- Quick Switch Selector (Event + Year) -->
       <div class="flex items-center gap-3">
-        <label for="contestSelect" class="text-xs text-slate-400 font-bold uppercase tracking-wider hidden sm:inline">Jump Event:</label>
-        <select id="contestSelect" onchange="switchEvent(this.value)" class="bg-slate-900 border border-slate-700 text-slate-200 font-bold text-xs rounded-xl px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
-          <optgroup label="2026 Season">
-            <option value="renegade">Renegade Review (10/10/26)</option>
-            <option value="lafayette">Lafayette CoC (9/26/26)</option>
-            <option value="boastl">BOA St. Louis Super Regional (10/16-17/26)</option>
+        <label for="contestSelect" class="text-xs text-slate-400 font-bold uppercase tracking-wider hidden sm:inline">Jump Event & Year:</label>
+        <select id="contestSelect" onchange="const [e, y] = this.value.split('|'); switchEvent(e, y);" class="bg-slate-900 border border-slate-700 text-slate-200 font-bold text-xs rounded-xl px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+          <optgroup label="2026 Contests">
+            <option value="renegade|2026">Renegade Review 2026</option>
+            <option value="lafayette|2026">Lafayette CoC 2026</option>
+            <option value="boastl|2026">BOA St. Louis 2026</option>
           </optgroup>
           <optgroup label="2025 Recaps">
-            <option value="boastl-2025">BOA St. Louis 2025</option>
-            <option value="renegade-2025">Renegade Review 2025</option>
-            <option value="lafayette-2025">Lafayette CoC 2025</option>
+            <option value="renegade|2025">Renegade Review 2025</option>
+            <option value="lafayette|2025">Lafayette CoC 2025</option>
+            <option value="boastl|2025">BOA St. Louis 2025</option>
           </optgroup>
           <optgroup label="2024 Recaps">
-            <option value="boastl-2024">BOA St. Louis 2024</option>
-            <option value="renegade-2024">Renegade Review 2024</option>
-            <option value="lafayette-2024">Lafayette CoC 2024</option>
-            <option value="memc-2024">MEMC 2024</option>
+            <option value="renegade|2024">Renegade Review 2024</option>
+            <option value="lafayette|2024">Lafayette CoC 2024</option>
+            <option value="boastl|2024">BOA St. Louis 2024</option>
+            <option value="brokenarrow|2024">Broken Arrow 2024</option>
           </optgroup>
           <optgroup label="2023 Recaps">
-            <option value="boastl-2023">BOA St. Louis 2023</option>
-            <option value="memc-2023">MEMC 2023</option>
+            <option value="renegade|2023">Renegade Review 2023</option>
+            <option value="boastl|2023">BOA St. Louis 2023</option>
+            <option value="brokenarrow|2023">Broken Arrow 2023</option>
+          </optgroup>
+          <optgroup label="2022 Recaps">
+            <option value="brokenarrow|2022">Broken Arrow 2022</option>
+            <option value="lafayette|2022">Lafayette CoC 2022</option>
           </optgroup>
           <optgroup label="2021 Recaps">
-            <option value="boastl-2021">BOA St. Louis 2021</option>
+            <option value="boastl|2021">BOA St. Louis 2021</option>
+            <option value="renegade|2021">Renegade Review 2021</option>
           </optgroup>
         </select>
       </div>
@@ -162,20 +172,6 @@
       </section>
 
     </main>
-
-    <!-- Historical Archive Highlights -->
-    <section class="dashboard-tile">
-      <div class="flex items-center justify-between mb-2">
-        <h3 class="tile-title">
-          <i data-lucide="bar-chart-2" class="w-4 h-4 text-amber-400"></i>
-          Key Highlights & Caption Benchmarks
-        </h3>
-        <span class="badge-slate font-mono">Recap Reference</span>
-      </div>
-      <div id="historicalContestStats" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-2">
-        <!-- Injected via competition.js -->
-      </div>
-    </section>
 
   </div>
 
