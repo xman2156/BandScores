@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Master Competition Archive & Schedule</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen p-4 sm:p-6 lg:p-8">
+
+  <div class="max-w-[1440px] mx-auto space-y-6">
+
+    <!-- Header & Year Selector -->
+    <header class="flex flex-col md:flex-row items-start md:items-center justify-between border-b border-slate-800 pb-5 gap-4">
+      <div>
+        <div class="flex items-center gap-2">
+          <a href="index.html" class="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1 transition">
+            <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Back to Main Dashboard
+          </a>
+          <span class="text-slate-600">|</span>
+          <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+            COMPETITION DIRECTORY
+          </span>
+        </div>
+        <h1 class="text-3xl font-black tracking-tight text-white mt-1">Season Contests & Recaps</h1>
+        <p class="text-xs sm:text-sm text-slate-400 mt-0.5">Explore schedules, active flight draws, and full historical score recaps.</p>
+      </div>
+
+      <!-- Year Filter Dropdown -->
+      <div class="flex items-center gap-3">
+        <label for="yearSelect" class="text-xs text-slate-400 font-bold uppercase tracking-wider">Select Season:</label>
+        <select id="yearSelect" onchange="filterByYear(this.value)" class="bg-slate-900 border border-slate-700 text-white font-bold text-sm rounded-xl px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+          <option value="2026" selected>2026 Season (Current)</option>
+          <option value="2025">2025 Season</option>
+          <option value="2024">2024 Season</option>
+          <option value="2023">2023 Season</option>
+          <option value="2021">2021 Season</option>
+          <option value="all">All Available Years (2021-2026)</option>
+        </select>
+      </div>
+    </header>
+
+    <!-- Season Summary Card -->
+    <section class="rounded-xl bg-slate-900 border border-slate-800 p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="p-3 bg-indigo-600/10 border border-indigo-500/20 rounded-xl text-indigo-400">
+          <i data-lucide="trophy" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <h2 id="seasonTitle" class="text-lg font-black text-white">2026 Competitive Season</h2>
+          <p id="seasonSub" class="text-xs text-slate-400">Showing active draws, confirmed results, and projected championships.</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-4 text-xs font-mono">
+        <div><span class="text-slate-500">Contests Listed:</span> <span id="compCount" class="font-bold text-indigo-400">0</span></div>
+      </div>
+    </section>
+
+    <!-- Master Competitions Grid -->
+    <main id="competitionsGrid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+      <!-- Injected via competitions.js -->
+    </main>
+
+  </div>
+
+  <script src="competitions.js"></script>
+</body>
+</html>

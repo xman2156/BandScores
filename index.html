@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Marching Arts Intelligence & Projection Dashboard</title>
+
+  <!-- Core Libraries via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Local Custom Stylesheet -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen p-4 sm:p-6 lg:p-8">
+
+  <div class="max-w-[1440px] mx-auto space-y-6">
+
+    <!-- Top Navigation / Real-time Bar -->
+    <header class="flex flex-col md:flex-row items-start md:items-center justify-between border-b border-slate-800 pb-5 gap-4">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+            2026 COMPETITIVE CYCLE
+          </span>
+          <span class="text-xs text-slate-500">Live Ingest & Prediction Engine</span>
+        </div>
+        <h1 class="text-3xl font-black tracking-tight text-white mt-1">Band Analytics Hub</h1>
+      </div>
+      
+      <div class="flex items-center gap-3">
+        <button id="syncButton" class="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-semibold transition shadow-lg shadow-indigo-600/20">
+          <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+          Sync Sheet Data
+        </button>
+      </div>
+    </header>
+
+    <!-- FHC Strategic Command Tile -->
+    <section class="rounded-2xl bg-gradient-to-r from-blue-950/70 via-slate-900 to-indigo-950/80 border border-blue-500/30 p-6 relative overflow-hidden shadow-2xl">
+      <div class="absolute -right-12 -bottom-12 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
+      
+      <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 relative z-10">
+        <div class="space-y-1 max-w-xl">
+          <div class="flex items-center gap-2">
+            <span class="px-2.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-bold text-xs uppercase tracking-wider">Spotlight Focus</span>
+            <span class="text-slate-400 text-xs font-medium">Francis Howell Central Spartan Marching Band</span>
+          </div>
+          <h2 class="text-2xl font-black tracking-tight text-white">FHC Campaign Projections & Standings</h2>
+          <p class="text-xs sm:text-sm text-slate-300">
+            Baseline derived from the Tiger Ambush Classic (9/19/26: 71.800), projected against historical progression across the Lafayette CoC, Renegade Review, and BOA St. Louis.
+          </p>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 w-full lg:w-auto">
+          <div class="stat-card">
+            <div class="stat-label">Tiger Ambush '26</div>
+            <div class="stat-value text-white">71.800</div>
+            <div class="stat-sub">Class AAAA 4th</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Lafayette Peak '24</div>
+            <div class="stat-value text-white">80.950</div>
+            <div class="stat-sub text-emerald-400">2nd Place Finals</div>
+          </div>
+          <div class="stat-card border-indigo-500/30 bg-indigo-950/20">
+            <div class="stat-label text-indigo-400">Renegade Proj.</div>
+            <div class="stat-value text-indigo-300">75.20</div>
+            <div class="stat-sub text-indigo-400">Oct 10 Projection</div>
+          </div>
+          <div class="stat-card border-emerald-500/30 bg-emerald-950/20">
+            <div class="stat-label text-emerald-400">BOA STL Target</div>
+            <div class="stat-value text-emerald-300">74.50+</div>
+            <div class="stat-sub text-emerald-400">Class AA Semi Cutoff</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Core Modular Grid -->
+    <main class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+
+      <!-- Tile 1: Recent Ingested Results -->
+      <section class="dashboard-tile">
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="tile-title">
+              <i data-lucide="award" class="w-4 h-4 text-emerald-400"></i>
+              Recent Scores (9/19/26)
+            </h3>
+            <span class="badge-emerald">Live Ingest</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs text-left">
+              <thead class="text-slate-400 uppercase font-semibold border-b border-slate-800">
+                <tr>
+                  <th class="py-2">Program</th>
+                  <th class="py-2 text-right">Contest</th>
+                  <th class="py-2 text-right font-mono">Score</th>
+                </tr>
+              </thead>
+              <tbody id="scoresTableBody" class="divide-y divide-slate-800/60 font-medium text-slate-300">
+                <!-- Injected via app.js -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <p class="tile-footer">Ingesting Class AAA & AAAA scores from Edwardsville Tiger Ambush Classic.</p>
+      </section>
+
+      <!-- Tile 2: Upcoming Calendar & Matchups -->
+      <section class="dashboard-tile">
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="tile-title">
+              <i data-lucide="calendar" class="w-4 h-4 text-indigo-400"></i>
+              Upcoming 2026 Contests
+            </h3>
+            <!-- Updated clickable button -->
+            <a href="competitions.html" class="badge-indigo hover:bg-indigo-500/20 transition flex items-center gap-1">
+              <span>View All Comps</span>
+              <i data-lucide="arrow-up-right" class="w-3 h-3"></i>
+            </a>
+          </div>
+
+          <div class="space-y-3">
+            <a href="competition.html?event=lafayette" class="calendar-item hover:border-indigo-500 hover:bg-slate-900 transition block">
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="font-bold text-white text-sm">Lafayette Contest of Champions</div>
+                  <div class="text-xs text-slate-400">Gold, Black, and White Divisions</div>
+                </div>
+                <div class="font-mono text-xs text-indigo-400 font-bold">9/26/26 &rarr;</div>
+              </div>
+            </a>
+            <a href="competition.html?event=renegade" class="calendar-item border-indigo-500/30 hover:border-indigo-500 hover:bg-slate-900 transition block">
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="font-bold text-white text-sm flex items-center gap-1.5">
+                    <span>Renegade Review</span>
+                    <span class="px-1.5 py-0.2 text-[10px] bg-blue-500/20 text-blue-400 rounded">FHC Slotted</span>
+                  </div>
+                  <div class="text-xs text-slate-400">Owasso, Bixby, Blue Springs South, FHC</div>
+                </div>
+                <div class="font-mono text-xs text-indigo-400 font-bold">10/10/26 &rarr;</div>
+              </div>
+            </a>
+            <a href="competition.html?event=boastl" class="calendar-item hover:border-indigo-500 hover:bg-slate-900 transition block">
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="font-bold text-white text-sm">BOA St. Louis Super Regional</div>
+                  <div class="text-xs text-slate-400">The Dome at America's Center</div>
+                </div>
+                <div class="font-mono text-xs text-indigo-400 font-bold">10/16-17 &rarr;</div>
+              </div>
+            </a>
+          </div>
+        </div>
+        <p class="tile-footer">Click any event above for live boards, or "View All Comps" for full multi-year archives.</p>
+      </section>
+
+      <!-- Tile 3: Growth Trajectory Projections -->
+      <section class="dashboard-tile">
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="tile-title">
+              <i data-lucide="trending-up" class="w-4 h-4 text-emerald-400"></i>
+              Projected Score Growth
+            </h3>
+            <span class="badge-slate">BOA Model</span>
+          </div>
+          <p class="text-xs text-slate-400 mb-3">
+            Predictive seasonal model factoring historical September-to-October compression deltas:
+          </p>
+          <div class="space-y-2 text-xs" id="projectionsList">
+            <!-- Injected via app.js -->
+          </div>
+        </div>
+        <p class="tile-footer">Dynamic model: recalibrates automatically when sheet inputs update.</p>
+      </section>
+
+      <!-- Tile 4: FHC Caption Evolution Chart (Takes 2 Columns) -->
+      <section class="dashboard-tile md:col-span-2">
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="tile-title">
+              <i data-lucide="line-chart" class="w-4 h-4 text-blue-400"></i>
+              Francis Howell Central: Caption Trajectory Breakdown
+            </h3>
+            <span class="badge-slate">Multi-Year Archive</span>
+          </div>
+          <p class="text-xs text-slate-400 mb-4">
+            Comparison of Total Score, Music Ensemble/Ind., and Visual marks across 2021-2024 BOA STL appearances and 2026 projected targets.
+          </p>
+          <div class="chart-container">
+            <canvas id="fhcChart"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tile 5: Data Integration Diagnostic -->
+      <section class="dashboard-tile">
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="tile-title">
+              <i data-lucide="database" class="w-4 h-4 text-amber-400"></i>
+              Data Pipe Status
+            </h3>
+            <span class="flex items-center gap-1.5 text-xs text-emerald-400 font-mono">
+              <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              Synchronized
+            </span>
+          </div>
+          <div class="space-y-3 text-xs text-slate-400">
+            <p>
+              Reads directly from your published Google Drive spreadsheet endpoint without backend servers.
+            </p>
+            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1.5 font-mono text-[11px]">
+              <div><span class="text-slate-500">Target Node:</span> Edwardsville + Lafayette CoC</div>
+              <div><span class="text-slate-500">Ingest Mode:</span> Direct Client CSV Parser</div>
+              <div><span class="text-slate-500">Payload Status:</span> Validated & Parsed</div>
+            </div>
+          </div>
+        </div>
+        <div class="mt-4 pt-3 border-t border-slate-800 text-[11px] text-slate-500">
+          Tailored for high-density analytics on desktop, tablet, and mobile.
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Local Custom Script -->
+  <script src="app.js"></script>
+</body>
+</html>

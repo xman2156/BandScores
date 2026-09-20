@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Competition Profile & Recap Hub</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="competition.css" />
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen p-4 sm:p-6 lg:p-8">
+
+  <div class="max-w-[1440px] mx-auto space-y-6">
+
+    <!-- Header Navigation -->
+    <header class="flex flex-col md:flex-row items-start md:items-center justify-between border-b border-slate-800 pb-5 gap-4">
+      <div>
+        <div class="flex items-center gap-2">
+          <a href="competitions.html" class="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1 transition">
+            <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> All Competitions
+          </a>
+          <span class="text-slate-600">|</span>
+          <a href="index.html" class="text-xs text-slate-400 hover:text-white transition">Dashboard</a>
+          <span class="text-slate-600">|</span>
+          <span id="contestTag" class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+            CONTEST RECAP
+          </span>
+        </div>
+        <h1 id="contestTitle" class="text-3xl font-black tracking-tight text-white mt-1">Loading Contest...</h1>
+        <p id="contestSubtitle" class="text-xs sm:text-sm text-slate-400 mt-0.5">Fetching event scores, caption recaps, and rankings...</p>
+      </div>
+
+      <!-- Live Quick-Switch Selector -->
+      <div class="flex items-center gap-3">
+        <label for="contestSelect" class="text-xs text-slate-400 font-bold uppercase tracking-wider hidden sm:inline">Jump Event:</label>
+        <select id="contestSelect" onchange="switchEvent(this.value)" class="bg-slate-900 border border-slate-700 text-slate-200 font-bold text-xs rounded-xl px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+          <optgroup label="2026 Season">
+            <option value="renegade">Renegade Review (10/10/26)</option>
+            <option value="lafayette">Lafayette CoC (9/26/26)</option>
+            <option value="boastl">BOA St. Louis Super Regional (10/16-17/26)</option>
+          </optgroup>
+          <optgroup label="2025 Recaps">
+            <option value="boastl-2025">BOA St. Louis 2025</option>
+            <option value="renegade-2025">Renegade Review 2025</option>
+            <option value="lafayette-2025">Lafayette CoC 2025</option>
+          </optgroup>
+          <optgroup label="2024 Recaps">
+            <option value="boastl-2024">BOA St. Louis 2024</option>
+            <option value="renegade-2024">Renegade Review 2024</option>
+            <option value="lafayette-2024">Lafayette CoC 2024</option>
+            <option value="memc-2024">MEMC 2024</option>
+          </optgroup>
+          <optgroup label="2023 Recaps">
+            <option value="boastl-2023">BOA St. Louis 2023</option>
+            <option value="memc-2023">MEMC 2023</option>
+          </optgroup>
+          <optgroup label="2021 Recaps">
+            <option value="boastl-2021">BOA St. Louis 2021</option>
+          </optgroup>
+        </select>
+      </div>
+    </header>
+
+    <!-- FHC Spotlight Box -->
+    <section class="rounded-2xl bg-gradient-to-r from-blue-950/70 via-slate-900 to-indigo-950/80 border border-blue-500/30 p-6 shadow-2xl relative overflow-hidden">
+      <div class="absolute -right-12 -bottom-12 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+      <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 relative z-10">
+        <div class="space-y-1 max-w-xl">
+          <div class="flex items-center gap-2">
+            <span class="px-2.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-bold text-xs uppercase tracking-wider">Spotlight Band</span>
+            <span class="text-slate-400 text-xs font-medium">Francis Howell Central</span>
+          </div>
+          <h2 id="fhcEventHeadline" class="text-2xl font-black tracking-tight text-white">Event Strategic Outlook</h2>
+          <p id="fhcEventSummary" class="text-xs sm:text-sm text-slate-300">Evaluating scores and caption achievements.</p>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 w-full lg:w-auto">
+          <div class="stat-card">
+            <div id="statLabel1" class="stat-label">Final Score</div>
+            <div id="fhcStatPeak" class="stat-value text-white">--</div>
+            <div id="fhcStatPeakSub" class="stat-sub">Total Achieved</div>
+          </div>
+          <div class="stat-card border-indigo-500/30 bg-indigo-950/20">
+            <div id="statLabel2" class="stat-label text-indigo-400">Class / Caption</div>
+            <div id="fhcStatTarget" class="stat-value text-indigo-300 font-mono">--</div>
+            <div id="fhcStatTargetSub" class="stat-sub text-indigo-400">Class Benchmark</div>
+          </div>
+          <div class="stat-card">
+            <div id="statLabel3" class="stat-label">Official Placement</div>
+            <div id="fhcStatRank" class="stat-value text-white">--</div>
+            <div id="fhcStatRankSub" class="stat-sub text-amber-400">Standing</div>
+          </div>
+          <div class="stat-card border-emerald-500/30 bg-emerald-950/20">
+            <div id="statLabel4" class="stat-label text-emerald-400">Top Benchmark</div>
+            <div id="fhcStatCutoff" class="stat-value text-emerald-300 font-mono">--</div>
+            <div id="fhcStatCutoffSub" class="stat-sub text-emerald-400">Champion Score</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Main Dual Grid -->
+    <main class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+
+      <!-- Left Column: Performance Draw / Roster -->
+      <section class="dashboard-tile">
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <h3 id="rosterTitle" class="tile-title">
+              <i data-lucide="list-ordered" class="w-4 h-4 text-indigo-400"></i>
+              Performance Order / Class Roster
+            </h3>
+            <span id="bandCountBadge" class="badge-indigo">-- Programs</span>
+          </div>
+          <div class="overflow-y-auto max-h-[620px] border border-slate-800 rounded-xl bg-slate-950/40">
+            <table class="w-full text-xs text-left">
+              <thead class="text-slate-400 uppercase font-semibold bg-slate-900 sticky top-0 border-b border-slate-800 z-10">
+                <tr>
+                  <th class="py-2.5 px-3">#</th>
+                  <th class="py-2.5 px-3">School Name</th>
+                  <th class="py-2.5 px-3 text-right">Flight / Class</th>
+                </tr>
+              </thead>
+              <tbody id="rosterTableBody" class="divide-y divide-slate-800/60 font-medium text-slate-300">
+                <!-- Injected via competition.js -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <p class="tile-footer">Official registration roster and performance order.</p>
+      </section>
+
+      <!-- Right Column: Official Results / Leaderboard -->
+      <section class="dashboard-tile">
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <h3 id="leaderboardTitle" class="tile-title">
+              <i data-lucide="award" class="w-4 h-4 text-emerald-400"></i>
+              Official Final Results & Recaps
+            </h3>
+            <span id="leaderboardBadge" class="badge-emerald">Official Results</span>
+          </div>
+          <div class="overflow-y-auto max-h-[620px] border border-slate-800 rounded-xl bg-slate-950/40">
+            <table class="w-full text-xs text-left">
+              <thead class="text-slate-400 uppercase font-semibold bg-slate-900 sticky top-0 border-b border-slate-800 z-10">
+                <tr>
+                  <th class="py-2.5 px-3">Rank</th>
+                  <th class="py-2.5 px-3">School Name</th>
+                  <th id="colScore" class="py-2.5 px-3 text-right font-mono">Total Score</th>
+                  <th id="colStatus" class="py-2.5 px-3 text-right">Division / Placement</th>
+                </tr>
+              </thead>
+              <tbody id="leaderboardTableBody" class="divide-y divide-slate-800/60 font-medium text-slate-300">
+                <!-- Injected via competition.js -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <p class="tile-footer">Official verified recap scores straight from contest archives.</p>
+      </section>
+
+    </main>
+
+    <!-- Historical Archive Highlights -->
+    <section class="dashboard-tile">
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="tile-title">
+          <i data-lucide="bar-chart-2" class="w-4 h-4 text-amber-400"></i>
+          Key Highlights & Caption Benchmarks
+        </h3>
+        <span class="badge-slate font-mono">Recap Reference</span>
+      </div>
+      <div id="historicalContestStats" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-2">
+        <!-- Injected via competition.js -->
+      </div>
+    </section>
+
+  </div>
+
+  <script src="competition.js"></script>
+</body>
+</html>
