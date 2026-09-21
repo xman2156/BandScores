@@ -6,4 +6,4 @@
 // Safe to commit this file to a public repo.
 
 const GEMINI_PROXY_URL = "https://band-scores-ai.xman2156.workers.dev/generate";
-const GEMINI_MODEL = "gemini-3.6-flash";
+const GEMINI_MODEL = "gemini-flash-latest";
