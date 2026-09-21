@@ -1,8 +1,6 @@
 // =============================================================================
-// Gemini AI Client — Caching + Prompt Templates
+// Gemini AI Client — proxied through Cloudflare Worker
 // =============================================================================
-
-const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 // ---------------------------------------------------------------------------
 // Cache (localStorage, 24h TTL)
@@ -38,11 +36,11 @@ function setCache(key, value, ttlHours = 24) {
 }
 
 // ---------------------------------------------------------------------------
-// Low-level Gemini call
+// Low-level Gemini call (via Worker proxy — no key on the client)
 // ---------------------------------------------------------------------------
 async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens = 800 } = {}) {
-  if (!GEMINI_API_KEY || GEMINI_API_KEY.includes("PASTE_")) {
-    throw new Error("Gemini API key not configured — edit config.js");
+  if (!GEMINI_PROXY_URL || GEMINI_PROXY_URL.includes("YOUR-SUBDOMAIN")) {
+    throw new Error("AI proxy URL not configured — edit config.js");
   }
 
   const generationConfig = {
@@ -57,7 +55,7 @@ async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens 
     generationConfig
   };
 
-  const res = await fetch(`${GEMINI_ENDPOINT}?key=${GEMINI_API_KEY}`, {
+  const res = await fetch(`${GEMINI_PROXY_URL}?model=${GEMINI_MODEL}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
@@ -65,17 +63,17 @@ async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens 
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`Gemini ${res.status}: ${errText.slice(0, 200)}`);
+    throw new Error(`AI proxy ${res.status}: ${errText.slice(0, 200)}`);
   }
 
   const data = await res.json();
   const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error("Empty Gemini response");
+  if (!text) throw new Error("Empty AI response");
 
   try {
     return JSON.parse(text);
   } catch {
-    throw new Error("Gemini returned invalid JSON: " + text.slice(0, 150));
+    throw new Error("AI returned invalid JSON: " + text.slice(0, 150));
   }
 }
 
