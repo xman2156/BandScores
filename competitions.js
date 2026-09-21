@@ -6,6 +6,16 @@ const MASTER_INDEX_SPREADSHEET_ID = "106s_uuX5YOXAS_cXPCqj4HaO69DK8wHMWGevKUhTWd
 
 let allMasterRows = [];
 
+// Extract MM/DD/YY or MM/DD/YYYY from a tab name like "MEMC - 2026 - 9/12/26"
+function extractDateFromTab(tabName) {
+  if (!tabName) return "";
+  const m = tabName.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (!m) return "";
+  let y = m[3];
+  if (y.length === 2) y = "20" + y;
+  return `${m[1]}/${m[2]}/${y}`;
+}
+
 function parseLocalDate(dateStr, fallbackYear) {
   if (!dateStr) return new Date(`${fallbackYear}-10-31T23:59:59`);
   const parts = dateStr.trim().split(/[-/]/);
@@ -56,18 +66,30 @@ async function fetchDirectorySheetData() {
   const csv = await res.text();
   const parsed = Papa.parse(csv, { header: true, skipEmptyLines: true });
 
-  allMasterRows = (parsed.data || []).map(r => ({
-    name: r["Contest Name"] || r["Name"] || "Unnamed Contest",
-    key: (r["Event Key"] || r["eventKey"] || r["Key"] || "").trim().toLowerCase(),
-    loc: r["Location"] || r["City"] || "Location Pending",
-    year: (r["Year"] || "").toString().trim(),
-    date: (r["Date"] || "").trim(),
-    id: (r["Spreadsheet ID"] || r["spreadsheetId"] || "").trim()
-  })).filter(c => c.key && c.year);
+  allMasterRows = (parsed.data || []).map(r => {
+    const prelimsTab = (r["Prelims Tab"] || r["Tab Name"] || r["Tab"] || "").trim();
+    const finalsTab  = (r["Finals Tab"] || "").trim();
+    // Prefer an explicit Date column if it exists; otherwise pull from the tab name.
+    const dateFromSheet = (r["Date"] || "").trim();
+    const dateFromTab = extractDateFromTab(prelimsTab);
+
+    return {
+      name: r["Contest Name"] || r["Name"] || "Unnamed Contest",
+      key: (r["Event Key"] || r["eventKey"] || r["Key"] || "").trim().toLowerCase(),
+      loc: r["Location"] || r["City"] || "Location Pending",
+      year: (r["Year"] || "").toString().trim(),
+      date: dateFromSheet || dateFromTab,
+      prelimsTab: prelimsTab,
+      finalsTab: finalsTab,
+      id: (r["Spreadsheet ID"] || r["spreadsheetId"] || "").trim()
+    };
+  }).filter(c => c.key && c.year);
 
   if (allMasterRows.length === 0) {
     throw new Error("Master directory returned 0 valid rows — check column headers");
   }
+
+  console.log(`[Directory] Loaded ${allMasterRows.length} entries. Sample:`, allMasterRows[0]);
   return allMasterRows;
 }
 
@@ -77,7 +99,6 @@ async function loadCompetitionsDirectory(selectedYear = "2026") {
 
   container.innerHTML = `<div class="col-span-full py-12 text-center text-slate-400 font-mono text-xs">Syncing active contests...</div>`;
 
-  // --- Fetch directory ---
   let rows;
   try {
     rows = await fetchDirectorySheetData();
