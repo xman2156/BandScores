@@ -106,9 +106,6 @@ function parseFullWorkbookCSV(rawCsvText) {
   const parsed = Papa.parse(rawCsvText, { skipEmptyLines: false });
   const rows = parsed.data;
 
-  console.log("[Raw CSV first 500 chars]", rawCsvText.slice(0, 500));
-  console.log("[First 8 rows]", rows.slice(0, 8));
-
   let currentBlock = "Prelims";
   let currentClass = "";
   let inlineClassColIdx = -1;
@@ -124,26 +121,27 @@ function parseFullWorkbookCSV(rawCsvText) {
     "recap", "summary", "stats", "timing", "division", "penalty", "rank", "place"
   ];
 
-  // Robust class banner detector — accepts many text variants
+  // Google merges header cells like: "Class A Judge Panel Order"
+  // So we prefix-match, not exact-match.
   function detectBanner(row) {
-    for (const rawCell of row) {
-      const c = (rawCell || "").trim().toLowerCase();
-      if (!c || c.length > 40) continue;
-      // Never treat these as banners
-      if (c.includes("judge") || c.includes("panel") ||
-          c.includes("rank")  || c.includes("rating") ||
-          c.includes("school name")) continue;
+    for (let c = 0; c < Math.min(row.length, 2); c++) {
+      const cell = (row[c] || "").trim();
+      if (!cell || cell.length > 120) continue;
+      const lc = cell.toLowerCase();
 
-      // Class AAAA / AAA / AA / A (with or without "class " prefix, with or without "4a" style)
-      if (/^class\s*(aaaa|4a)$/.test(c) || /^(aaaa|4a)$/.test(c)) return "Class AAAA";
-      if (/^class\s*(aaa|3a)$/.test(c)  || /^(aaa|3a)$/.test(c))  return "Class AAA";
-      if (/^class\s*(aa|2a)$/.test(c)   || /^(aa|2a)$/.test(c))   return "Class AA";
-      if (/^class\s*(a|1a)$/.test(c))                              return "Class A";
+      const m = lc.match(/^(class\s+)?(aaaa|aaa|aa|a|4a|3a|2a|1a)\b/);
+      if (m) {
+        const raw = m[2];
+        if (raw === "aaaa" || raw === "4a") return "Class AAAA";
+        if (raw === "aaa"  || raw === "3a") return "Class AAA";
+        if (raw === "aa"   || raw === "2a") return "Class AA";
+        if (raw === "a"    || raw === "1a") return "Class A";
+      }
 
-      // Divisions
-      if (/^gold(\s+division)?$/.test(c))  return "Gold Division";
-      if (/^black(\s+division)?$/.test(c)) return "Black Division";
-      if (/^white(\s+division)?$/.test(c)) return "White Division";
+      const div = lc.match(/^(gold|black|white)(\s+division)?\b/);
+      if (div) {
+        return div[1].charAt(0).toUpperCase() + div[1].slice(1) + " Division";
+      }
     }
     return "";
   }
@@ -155,11 +153,10 @@ function parseFullWorkbookCSV(rawCsvText) {
 
     const line = row.join(" ").toLowerCase();
 
-    // --- Block switches ---
-    // Only treat as finals switch if we're not looking at a BOA header row
+    // Block switches
     if (line.includes("finals") &&
         !line.includes("field & timing") &&
-        !line.includes("prelims")) {          // <-- new guard
+        !line.includes("prelims")) {
       currentBlock = "Finals";
       currentClass = "";
       detectedFinals = true;
@@ -170,24 +167,22 @@ function parseFullWorkbookCSV(rawCsvText) {
       continue;
     }
 
-    // --- BOA inline class column detection ---
+    // BOA inline class column
     const lowerRow = row.map(c => c.toLowerCase());
-    const hasClassCol = lowerRow.includes("class");
-    const hasBoaHeader = lowerRow.includes("music performance") ||
-                         lowerRow.includes("field & timing");
-    if (hasClassCol && hasBoaHeader) {
+    if (lowerRow.includes("class") &&
+        (lowerRow.includes("music performance") || lowerRow.includes("field & timing"))) {
       inlineClassColIdx = lowerRow.indexOf("class");
       continue;
     }
 
-    // --- Class banner detection (runs BEFORE all skip checks) ---
+    // Banner detection BEFORE any skip logic
     const banner = detectBanner(row);
     if (banner) {
       currentClass = banner;
       continue;
     }
 
-    // --- Skip non-data rows ---
+    // Skip non-data rows
     if (
       line.includes("judge panel") ||
       (line.includes("individual") && line.includes("ensemble")) ||
@@ -199,17 +194,14 @@ function parseFullWorkbookCSV(rawCsvText) {
       continue;
     }
 
-    // --- Score ---
+    // Score
     let scoreVal = 0.0;
     for (let c = row.length - 1; c >= 0; c--) {
       const val = parseFloat(row[c]);
-      if (!isNaN(val) && val >= 35.0 && val <= 100.0) {
-        scoreVal = val;
-        break;
-      }
+      if (!isNaN(val) && val >= 35.0 && val <= 100.0) { scoreVal = val; break; }
     }
 
-    // --- Name ---
+    // Name
     let candidateName = "";
     for (let c = 0; c < Math.min(row.length, 4); c++) {
       const cell = row[c];
@@ -233,7 +225,7 @@ function parseFullWorkbookCSV(rawCsvText) {
       continue;
     }
 
-    // --- Class assignment ---
+    // Class assignment
     let finalClass = "";
     if (inlineClassColIdx !== -1 && row[inlineClassColIdx] && row[inlineClassColIdx].length > 0) {
       const val = row[inlineClassColIdx].trim();
@@ -251,9 +243,9 @@ function parseFullWorkbookCSV(rawCsvText) {
     });
   }
 
-  console.log("[Parser] prelims:", prelims.length, "finals:", finals.length);
-  console.log("[Parser] classes found:", [...new Set(prelims.map(b => b.classification))]);
-  console.log("[Parser] sample:", prelims[0]);
+  // Diagnostic — remove once class assignment is verified
+  console.log("[Parser] bands by class:");
+  console.table(prelims.map(b => ({ class: b.classification || "(none)", name: b.name, score: b.base })));
 
   return { prelims, finals, hasFinalsInSheet: detectedFinals };
 }
