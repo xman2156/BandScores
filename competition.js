@@ -10,6 +10,37 @@ let activeWorkbookData = {
   hasFinalsInSheet: false
 };
 
+// Extract MM/DD/YY or MM/DD/YYYY from a tab name like "MEMC - 2026 - 9/12/26"
+function extractDateFromTab(tabName) {
+  if (!tabName) return "";
+  const m = tabName.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (!m) return "";
+  let y = m[3];
+  if (y.length === 2) y = "20" + y;
+  return `${m[1]}/${m[2]}/${y}`;
+}
+
+// Parse "M/D/YY" or "M/D/YYYY" or "YYYY-MM-DD" into a Date at end-of-day
+function parseLocalDate(dateStr, fallbackYear) {
+  if (!dateStr) return new Date(`${fallbackYear}-10-31T23:59:59`);
+  const parts = dateStr.trim().split(/[-/]/);
+  if (parts.length === 3) {
+    let y, m, d;
+    if (parts[0].length === 4) {
+      y = parseInt(parts[0], 10);
+      m = parseInt(parts[1], 10) - 1;
+      d = parseInt(parts[2], 10);
+    } else {
+      m = parseInt(parts[0], 10) - 1;
+      d = parseInt(parts[1], 10);
+      y = parseInt(parts[2], 10);
+      if (y < 100) y += 2000;
+    }
+    return new Date(y, m, d, 23, 59, 59);
+  }
+  return new Date(dateStr);
+}
+
 async function fetchMasterDirectory() {
   const endpoint = `https://docs.google.com/spreadsheets/d/${MASTER_INDEX_SPREADSHEET_ID}/gviz/tq?tqx=out:csv&_cb=${Date.now()}`;
   const res = await fetch(endpoint);
@@ -20,13 +51,17 @@ async function fetchMasterDirectory() {
 
   const entries = (parsed.data || []).map(r => {
     const hasFinalsStr = (r["Has Finals"] || r["hasFinals"] || "yes").toString().toLowerCase();
+    const prelimsTab = (r["Prelims Tab"] || r["Tab Name"] || r["Tab"] || "").trim();
+    const dateFromSheet = (r["Date"] || "").trim();
+    const dateFromTab = extractDateFromTab(prelimsTab);
+
     return {
       name: r["Contest Name"] || r["Name"] || "Contest",
       key: (r["Event Key"] || r["eventKey"] || r["Key"] || "").trim().toLowerCase(),
       loc: r["Location"] || r["City"] || "Location Pending",
       year: (r["Year"] || "").toString().trim(),
-      date: (r["Date"] || "").trim(),
-      prelimsTab: (r["Prelims Tab"] || r["Tab Name"] || r["Tab"] || "").trim(),
+      date: dateFromSheet || dateFromTab,
+      prelimsTab: prelimsTab,
       finalsTab: (r["Finals Tab"] || "").trim(),
       id: (r["Spreadsheet ID"] || r["spreadsheetId"] || "").trim(),
       hasFinals: ["yes", "true", "1"].includes(hasFinalsStr)
@@ -104,7 +139,6 @@ function parseFullWorkbookCSV(rows) {
 
     const line = row.join(" ").toLowerCase();
 
-    // --- Finals block switch ---
     if (line.includes("finals") &&
         !line.includes("field & timing") &&
         !line.includes("prelims")) {
@@ -120,7 +154,6 @@ function parseFullWorkbookCSV(rows) {
       continue;
     }
 
-    // --- BOA inline class column ---
     const lowerRow = row.map(c => c.toLowerCase());
     if (lowerRow.includes("class") &&
         (lowerRow.includes("music performance") || lowerRow.includes("field & timing"))) {
@@ -128,7 +161,6 @@ function parseFullWorkbookCSV(rows) {
       continue;
     }
 
-    // --- Banner detection ---
     const banner = detectBanner(row);
     if (banner) {
       currentClass = banner;
@@ -138,7 +170,6 @@ function parseFullWorkbookCSV(rows) {
       continue;
     }
 
-    // --- Header-repeat → advance to next class (non-BOA only) ---
     if (inlineClassColIdx === -1) {
       const hasSchoolNameHeader = row.some(c => c.toLowerCase() === "school name");
       const colAEmpty = !row[0] || row[0] === "";
@@ -150,7 +181,6 @@ function parseFullWorkbookCSV(rows) {
     }
     if (row.some(c => c.toLowerCase() === "school name")) continue;
 
-    // --- Skip judge panels, sub-headers, awards ---
     if (
       line.includes("judge panel") ||
       (line.includes("individual") && line.includes("ensemble")) ||
@@ -162,14 +192,12 @@ function parseFullWorkbookCSV(rows) {
       continue;
     }
 
-    // --- Score ---
     let scoreVal = 0.0;
     for (let c = row.length - 1; c >= 0; c--) {
       const val = parseFloat(row[c]);
       if (!isNaN(val) && val >= 35.0 && val <= 100.0) { scoreVal = val; break; }
     }
 
-    // --- Name ---
     let candidateName = "";
     for (let c = 0; c < Math.min(row.length, 4); c++) {
       const cell = row[c];
@@ -183,7 +211,6 @@ function parseFullWorkbookCSV(rows) {
     }
     if (!candidateName) continue;
 
-    // --- Dedup ---
     const targetList = currentBlock === "Finals" ? finals : prelims;
     const existing = targetList.find(b => b.name.toLowerCase() === candidateName.toLowerCase());
     if (existing) {
@@ -191,7 +218,6 @@ function parseFullWorkbookCSV(rows) {
       continue;
     }
 
-    // --- Classification ---
     let finalClass = "";
     if (inlineClassColIdx !== -1 && row[inlineClassColIdx] && row[inlineClassColIdx].length > 0) {
       const val = row[inlineClassColIdx].trim();
@@ -293,6 +319,10 @@ async function loadCompetitionView(eventKey, selectedYear, selectedRound) {
 
   let targetEntry = contestSeasons.find(c => c.year === selectedYear) || contestSeasons[0];
 
+  // Compute isPast from the ACTUAL contest date, not just the year
+  const contestDateObj = parseLocalDate(targetEntry.date, targetEntry.year);
+  targetEntry.isPast = contestDateObj < new Date();
+
   titleEl.textContent = `${targetEntry.name} (${selectedYear})`;
   subtitleEl.textContent = `Loading ${selectedYear} scores from Google Drive...`;
 
@@ -334,7 +364,8 @@ async function loadCompetitionView(eventKey, selectedYear, selectedRound) {
 // DOM Renderer
 // =============================================================================
 function renderUI(comp, year, currentRound, tabName) {
-  const isPast = parseInt(year, 10) < new Date().getFullYear();
+  // Use the pre-computed isPast flag from loadCompetitionView
+  const isPast = comp.isPast === true;
 
   const roundContainer = document.getElementById("roundToggleContainer");
   const showToggle = comp.hasFinals || activeWorkbookData.hasFinalsInSheet || Boolean(comp.finalsTab);
