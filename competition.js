@@ -382,12 +382,18 @@ async function enrichFHCSpotlight(comp, year, currentRound, contestSeasons, allE
   if (isPast && !fhc) return;
   if (!isPast && activeRoster.length === 0) return;
 
-  const cacheKey = hashData({
+  // For upcoming contests, the outlook is identical regardless of round,
+  // so we deliberately EXCLUDE round from the cache key to share one result.
+  // For past contests, prelims and finals results differ, so we include round.
+  const cacheKeyInput = {
     kind: isPast ? "summary" : "outlook",
-    comp: comp.key, year, round: currentRound,
+    comp: comp.key,
+    year,
     fhc: fhc ? { name: fhc.name, base: fhc.base, captions: fhc.captions } : null,
     rosterSize: activeRoster.length
-  });
+  };
+  if (isPast) cacheKeyInput.round = currentRound;
+  const cacheKey = hashData(cacheKeyInput);
 
   const cached = getCache(cacheKey);
   if (cached) { applyAIResult(cached, isPast, headlineEl, summaryEl, extrasEl); return; }
@@ -530,9 +536,16 @@ function applyAIResult(result, isPast, headlineEl, summaryEl, extrasEl) {
 // AI Enrichment — Field-Wide Projected Standings
 // =============================================================================
 async function enrichProjectedStandings(comp, allEntries) {
-  const roster = activeWorkbookData.prelims;
+  // The roster is always the prelims sheet for upcoming contests.
+  // If the user navigated straight to a finals tab and prelims is empty,
+  // fall back to whatever roster we do have.
+  const roster = activeWorkbookData.prelims.length > 0
+    ? activeWorkbookData.prelims
+    : activeWorkbookData.finals;
   if (roster.length === 0) return;
 
+  // Field projections are cached per contest+year only — NOT per round.
+  // The prelims and finals pages show the same projection.
   const cacheKey = hashData({
     kind: "field-projection",
     comp: comp.key,
@@ -548,7 +561,8 @@ async function enrichProjectedStandings(comp, allEntries) {
 
   showProjectionLoading();
 
-  // KV cache key: scoped to contest + ISO week, so it auto-refreshes every Monday
+  // KV cache key: scoped to contest + ISO week, so it auto-refreshes every Monday.
+  // No round component — same projection serves both prelims and finals views.
   const weekNum = Math.floor(Date.now() / (7 * 24 * 3600 * 1000));
   const kvCacheKey = `proj-${comp.key}-${comp.year}-w${weekNum}`;
 
@@ -574,7 +588,6 @@ async function gatherFieldHistory(comp, allEntries, roster) {
 
   console.log(`[gatherFieldHistory] Fetching ${sources.length} sheets (8 at a time)...`);
 
-  // Fetch with limited concurrency to avoid hammering Google
   const CONCURRENCY = 8;
   const results = [];
   for (let i = 0; i < sources.length; i += CONCURRENCY) {
@@ -592,7 +605,6 @@ async function gatherFieldHistory(comp, allEntries, roster) {
     results.push(...batchResults);
   }
 
-  // Group by band name (fuzzy-matched against current roster)
   const history = {};
   roster.forEach(b => history[b.name] = []);
 
@@ -610,7 +622,6 @@ async function gatherFieldHistory(comp, allEntries, roster) {
     }
   }
 
-  // Sort chronologically within each band
   Object.values(history).forEach(arr =>
     arr.sort((a, b) => parseLocalDate(a.date, a.year) - parseLocalDate(b.date, b.year))
   );
@@ -668,7 +679,17 @@ function applyFieldProjections(result, roster) {
 
   const overviewEl = getOrCreateOverviewEl();
   if (overviewEl && result.overview) {
-    overviewEl.textContent = result.overview;
+    const hasFinals = result.finalsSize > 0;
+    const finalsBadge = hasFinals
+      ? `<div class="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-violet-500/15 border border-violet-400/30 text-violet-200">
+           <span class="w-1.5 h-1.5 rounded-full bg-violet-400"></span>
+           Top ${result.finalsSize} advance • Cut line ~${result.finalsCutoff.toFixed(2)}
+         </div>`
+      : "";
+    overviewEl.innerHTML = `
+      <div class="text-xs text-violet-200 leading-relaxed">${result.overview}</div>
+      ${finalsBadge}
+    `;
     overviewEl.classList.remove("hidden");
   }
 
@@ -805,13 +826,14 @@ function renderLeaderboard(activeRoster, isPast) {
   if (!leaderboardBody) return;
 
   const showingProjection = !isPast && activeFieldProjections && activeFieldProjections.projections?.length > 0;
+  const hasFinals = activeFieldProjections?.finalsSize > 0;
 
   if (showingProjection) {
     titleEl.innerHTML = `<i data-lucide="sparkles" class="w-4 h-4 text-violet-400"></i> Projected Standings`;
     badgeEl.textContent = "AI Projection";
     badgeEl.className = "inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-violet-500/10 text-violet-300 border border-violet-500/20 font-mono";
     colScoreEl.textContent = "Proj. Score";
-    colStatusEl.textContent = "Confidence";
+    colStatusEl.textContent = hasFinals ? "Finals %" : "Confidence";
   } else {
     titleEl.innerHTML = `<i data-lucide="award" class="w-4 h-4 text-emerald-400"></i> Results & Standings`;
     badgeEl.textContent = isPast ? "Official Results" : "Awaiting Results";
@@ -828,7 +850,19 @@ function renderLeaderboard(activeRoster, isPast) {
     sorted.forEach((p, idx) => {
       const rosterBand = activeRoster.find(b => bandNameMatches(b.name, p.name));
       const isFHC = p.name.toLowerCase().includes("howell central");
-      const confColor = p.confidence === "high" ? "text-emerald-400" : p.confidence === "low" ? "text-amber-400" : "text-indigo-400";
+
+      let lastCol;
+      if (hasFinals) {
+        const fc = p.finalsChance ?? 0;
+        const cls = fc >= 90 ? "text-emerald-400"
+                  : fc >= 60 ? "text-indigo-400"
+                  : fc >= 30 ? "text-amber-400"
+                  : "text-slate-500";
+        lastCol = `<span class="text-xs font-mono font-bold ${cls}">${Math.round(fc)}%</span>`;
+      } else {
+        const confColor = p.confidence === "high" ? "text-emerald-400" : p.confidence === "low" ? "text-amber-400" : "text-indigo-400";
+        lastCol = `<span class="text-[10px] font-mono uppercase tracking-wider ${confColor}">${p.confidence}</span>`;
+      }
 
       const tr = document.createElement("tr");
       tr.className = isFHC
@@ -843,9 +877,7 @@ function renderLeaderboard(activeRoster, isPast) {
         <td class="py-2.5 px-3 text-right font-mono font-bold text-violet-300 italic">
           ${p.projectedScore.toFixed(2)}
         </td>
-        <td class="py-2.5 px-3 text-right">
-          <span class="text-[10px] font-mono uppercase tracking-wider ${confColor}">${p.confidence}</span>
-        </td>
+        <td class="py-2.5 px-3 text-right">${lastCol}</td>
       `;
       tr.onclick = () => openBandModal(
         rosterBand || { name: p.name, base: 0, captions: {} },
@@ -910,9 +942,11 @@ function openBandModal(band, allBands) {
 
   const c = band.captions || {};
   const hasCaptions = Object.keys(c).length > 0;
+  const hasFinalsData = proj && activeFieldProjections && activeFieldProjections.finalsSize > 0;
+  const gridCols = hasFinalsData ? "grid-cols-3" : "grid-cols-2";
 
   let html = `
-    <div class="grid grid-cols-2 gap-3">
+    <div class="grid ${gridCols} gap-3">
       <div class="p-3 bg-slate-950/60 border border-slate-800 rounded-xl">
         <div class="text-[10px] uppercase tracking-wider text-slate-500 font-bold">${proj ? "Projected Score" : "Total Score"}</div>
         <div class="text-2xl font-black ${proj ? 'text-violet-300 italic' : 'text-emerald-400'} font-mono mt-1">
@@ -925,15 +959,31 @@ function openBandModal(band, allBands) {
           #${proj ? proj.projectedRank : rank}
         </div>
       </div>
+      ${hasFinalsData ? `
+      <div class="p-3 bg-slate-950/60 border border-slate-800 rounded-xl">
+        <div class="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Finals Chance</div>
+        <div class="text-2xl font-black font-mono mt-1 ${
+          proj.finalsChance >= 90 ? 'text-emerald-400'
+          : proj.finalsChance >= 60 ? 'text-indigo-400'
+          : proj.finalsChance >= 30 ? 'text-amber-400'
+          : 'text-slate-500'
+        }">${Math.round(proj.finalsChance)}%</div>
+      </div>
+      ` : ""}
     </div>
   `;
 
   if (proj && proj.note) {
+    const projMeta = [];
+    if (proj.confidence) projMeta.push(`${proj.confidence} confidence`);
+    if (proj.finalsChance != null && activeFieldProjections?.finalsSize > 0) {
+      projMeta.push(`${Math.round(proj.finalsChance)}% finals chance`);
+    }
     html += `
       <div class="border border-violet-500/30 bg-violet-950/20 rounded-xl overflow-hidden">
         <div class="px-4 py-2 bg-violet-500/10 border-b border-violet-500/20 flex items-center gap-2">
           <i data-lucide="sparkles" class="w-3.5 h-3.5 text-violet-300"></i>
-          <span class="text-xs font-bold text-violet-300 uppercase tracking-wider">AI Projection — ${proj.confidence} confidence</span>
+          <span class="text-xs font-bold text-violet-300 uppercase tracking-wider">AI Projection — ${projMeta.join(" • ")}</span>
         </div>
         <div class="px-4 py-3 text-xs text-violet-100 leading-relaxed">
           ${proj.note}

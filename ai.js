@@ -36,8 +36,7 @@ function setCache(key, value, ttlHours = 24) {
 }
 
 // ---------------------------------------------------------------------------
-// Fuzzy band-name match. Handles "X High School" vs "X" but avoids
-// false positives like "Francis Howell" matching "Francis Howell Central".
+// Fuzzy band-name match
 // ---------------------------------------------------------------------------
 function bandNameMatches(a, b) {
   const norm = (s) => (s || "").toLowerCase()
@@ -57,7 +56,7 @@ function bandNameMatches(a, b) {
 }
 
 // ---------------------------------------------------------------------------
-// Low-level Gemini call (via Worker proxy, with retry + model fallback)
+// Low-level Gemini call
 // ---------------------------------------------------------------------------
 async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens = 4000, cacheKey = null } = {}) {
   if (!GEMINI_PROXY_URL || GEMINI_PROXY_URL.includes("YOUR-SUBDOMAIN")) {
@@ -255,7 +254,7 @@ function buildOutlookPrompt(comp, roster, priorSeasonScores, currentSeasonScores
     ? currentSeasonScores.map(s => `  ${s.contest} (${s.date}): ${s.score.toFixed(3)}`).join("\n")
     : "  (no completed 2026 contests yet)";
 
-  return `You are a marching band competition analyst projecting outcomes for an upcoming contest. Be specific. Do not hedge with "could" or "might" — commit to a projection.
+  return `You are a marching band competition analyst projecting outcomes for an upcoming contest. Be specific. Do not hedge.
 
 === CONTEXT ===
 Contest: ${comp.name} (${comp.year}), ${comp.loc}
@@ -288,7 +287,9 @@ Output JSON only, matching this schema exactly: ${JSON.stringify(OUTLOOK_SCHEMA)
 const FIELD_PROJECTION_SCHEMA = {
   type: "object",
   properties: {
-    overview: { type: "string" },
+    overview:      { type: "string" },
+    finalsSize:    { type: "number" },
+    finalsCutoff:  { type: "number" },
     projections: {
       type: "array",
       items: {
@@ -297,14 +298,15 @@ const FIELD_PROJECTION_SCHEMA = {
           name:            { type: "string" },
           projectedScore:  { type: "number" },
           projectedRank:   { type: "number" },
+          finalsChance:    { type: "number" },
           confidence:      { type: "string", enum: ["low", "medium", "high"] },
           note:            { type: "string" }
         },
-        required: ["name", "projectedScore", "projectedRank", "confidence", "note"]
+        required: ["name", "projectedScore", "projectedRank", "finalsChance", "confidence", "note"]
       }
     }
   },
-  required: ["overview", "projections"]
+  required: ["overview", "finalsSize", "finalsCutoff", "projections"]
 };
 
 function buildFieldProjectionPrompt(comp, roster, history) {
@@ -321,37 +323,52 @@ function buildFieldProjectionPrompt(comp, roster, history) {
 
   const rosterList = roster.map((b, i) => `${i + 1}. ${b.name}${b.classification ? ` (${b.classification})` : ""}`).join("\n");
 
-  return `You are a marching band competition analyst projecting final preliminary-round standings for an upcoming contest. Cite specific numbers. Do not use filler. Commit to projections — no hedging.
+  return `You are a marching band competition analyst projecting final preliminary-round standings for an upcoming contest. Cite specific numbers. Do not use filler. Commit to projections.
 
 === CONTEST ===
 ${comp.name} (${comp.year}) — ${comp.loc}
 Date: ${comp.date}
+Finals round: ${comp.hasFinals ? "Yes — top bands advance" : "No — single round, prelims is final"}
 
 === REGISTERED BANDS (${roster.length}) ===
 ${rosterList}
 
 === HISTORICAL SCORES PER BAND ===
-(Full history: all prior years of this contest, all prior years of peer contests, and all completed contests this season)
+(Full history: all prior years of this contest, all prior years of peer contests, all completed contests this season)
 
 ${bandBlocks}
 
 === TASK ===
-Project the final preliminary ranking and score for each of the ${roster.length} registered bands.
+Project final preliminary-round standings for all ${roster.length} registered bands.
 
 Rules:
-- Use each band's full history as the primary signal. Look for growth trajectories across years, not just the most recent score.
-- Bands with strong current-season momentum should be projected near their current trajectory.
+- Use each band's full history as the primary signal. Look for multi-year growth trajectories, not just the most recent score.
+- Bands with current-season momentum should be projected near their current trajectory, adjusted for venue difficulty.
 - Bands with scores at this same contest in prior years should be anchored to that pattern plus their growth curve.
-- Bands with ZERO history should be placed mid-pack with "low" confidence and a note saying the projection is a field-median estimate.
-- Rank must be unique integers 1 through ${roster.length}.
-- Scores should be realistic (marching band BOA-style range: 45-95).
+- Bands with ZERO history → mid-pack, low confidence, note explaining the projection is a field-median estimate.
+- projectedRank must be unique integers 1 through ${roster.length}.
+- projectedScore should be realistic (marching band range 45-95).
+
+FINALS CHANCE:
+${comp.hasFinals
+  ? `This contest has a finals round. Estimate finalsSize (how many bands advance — commonly 10-14 for a field this size) and finalsCutoff (the projected score of the last band to make the cut). For each band, compute finalsChance as a percentage (0-100) representing the probability they advance. Use the cut line as the 50% anchor: bands projected well above the cutoff should be 90-100%, bands right at the cutoff around 40-60%, bands well below 0-15%.`
+  : `This contest has NO finals round. Set finalsSize = 0, finalsCutoff = 0, and finalsChance = 0 for every band.`}
+
+OVERVIEW:
+Write a 2-3 sentence overview that names:
+1. The projected winner and their likely score.
+2. The most notable projection (a band that over- or under-performs its history).
+${comp.hasFinals ? `3. The projected finals bubble — who's on the edge of making the cut and what score they need.` : ""}
 
 Return JSON with these fields:
-- overview: 2 sentences. Who's projected to win, and what's the most notable projected result.
+- overview: string
+- finalsSize: number
+- finalsCutoff: number
 - projections: array of ${roster.length} entries, each with:
-  - name: exact band name as listed above
+  - name: exact band name
   - projectedScore: number
-  - projectedRank: integer (1 = highest)
+  - projectedRank: integer
+  - finalsChance: number (0-100)
   - confidence: "low" | "medium" | "high"
   - note: one sentence citing the specific historical scores that informed this projection
 
