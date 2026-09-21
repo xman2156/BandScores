@@ -33,7 +33,6 @@
         <p id="contestSubtitle" class="text-xs sm:text-sm text-slate-400 mt-0.5">Fetching event scores and recaps...</p>
       </div>
 
-      <!-- Controls: Round Toggle & Year Dropdown -->
       <div class="flex flex-wrap items-center gap-3">
         <div id="roundToggleContainer" class="hidden flex items-center bg-slate-900 border border-slate-700 p-1 rounded-xl">
           <button id="btnRoundPrelims" onclick="switchRound('prelims')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition bg-indigo-600 text-white shadow">
@@ -64,6 +63,7 @@
           </div>
           <h2 id="fhcEventHeadline" class="text-2xl font-black tracking-tight text-white">Event Performance Summary</h2>
           <p id="fhcEventSummary" class="text-xs sm:text-sm text-slate-300">Evaluating scores and contest standing.</p>
+          <div id="fhcAIExtras" class="hidden mt-2 space-y-1"></div>
         </div>
 
         <div class="flex flex-wrap gap-4 w-full lg:w-auto">
@@ -166,6 +166,8 @@
     </div>
   </div>
 
+  <script src="config.js"></script>
+  <script src="ai.js"></script>
   <script src="competition.js"></script>
 </body>
 </html>
