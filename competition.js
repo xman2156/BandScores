@@ -15,11 +15,10 @@ const fallbackDirectory = [
   { name: "BOA St. Louis Super Regional", key: "boastl", loc: "St. Louis, MO", year: "2021", prelimsTab: "BOA St Louis - 2021 Prelims - 10/22/21", finalsTab: "BOA St Louis - 2021 Finals - 10/23/21", id: "1ipg6FG-omTfFcDLieyOO1wQbHfWLJIG1aiZAS9bZJh4", hasFinals: true },
 
   // Lafayette Contest of Champions
-  { name: "Lafayette Contest of Champions", key: "lafayette", loc: "Wildwood, MO", year: "2026", prelimsTab: "Lafayette Contest of Champions - 2026 Prelims - 9/26/26", finalsTab: "", id: "10e1ghOqkzOyNt7lPOC_TRiw_WWPU2cIHVzxUK_YCPd4", hasFinals: true },
+  { name: "Lafayette Contest of Champions", key: "lafayette", loc: "Wildwood, MO", year: "2026", prelimsTab: "Lafayette Contest of Champions - 2026 - 9/26/26", finalsTab: "", id: "10e1ghOqkzOyNt7lPOC_TRiw_WWPU2cIHVzxUK_YCPd4", hasFinals: true },
   { name: "Lafayette Contest of Champions", key: "lafayette", loc: "Wildwood, MO", year: "2025", prelimsTab: "Lafayette Contest of Champions - 2025 - 9/20/25", finalsTab: "", id: "10e1ghOqkzOyNt7lPOC_TRiw_WWPU2cIHVzxUK_YCPd4", hasFinals: true },
   { name: "Lafayette Contest of Champions", key: "lafayette", loc: "Wildwood, MO", year: "2024", prelimsTab: "Lafayette Contest of Champions - 2024 - 9/28/24", finalsTab: "", id: "10e1ghOqkzOyNt7lPOC_TRiw_WWPU2cIHVzxUK_YCPd4", hasFinals: true },
   { name: "Lafayette Contest of Champions", key: "lafayette", loc: "Wildwood, MO", year: "2023", prelimsTab: "Lafayette Contest of Champions - 2023 - 9/30/23", finalsTab: "", id: "10e1ghOqkzOyNt7lPOC_TRiw_WWPU2cIHVzxUK_YCPd4", hasFinals: true },
-  { name: "Lafayette Contest of Champions", key: "lafayette", loc: "Wildwood, MO", year: "2022", prelimsTab: "Lafayette Contest of Champions - 2022 - 9/24/22", finalsTab: "", id: "10e1ghOqkzOyNt7lPOC_TRiw_WWPU2cIHVzxUK_YCPd4", hasFinals: true },
 
   // Renegade Review
   { name: "Renegade Review", key: "renegade", loc: "Owasso, OK", year: "2026", prelimsTab: "Renegade Review - 2026 - 10/10/26", finalsTab: "", id: "1aOD7KDcLPMYkFEkxQUcoYY48amnPMWs01s96t6yNqJo", hasFinals: true },
@@ -31,7 +30,6 @@ const fallbackDirectory = [
 
   // Broken Arrow Invitational
   { name: "Broken Arrow Invitational", key: "brokenarrow", loc: "Broken Arrow, OK", year: "2026", prelimsTab: "Broken Arrow Invitational - 2026 - 9/19/26", finalsTab: "", id: "1iatqDcFWffwrRzMKMDXUy5hAizRhfxYqGFSmOpzlQ7s", hasFinals: true },
-  { name: "Broken Arrow Invitational", key: "brokenarrow", loc: "Broken Arrow, OK", year: "2025", prelimsTab: "Broken Arrow Invitational - 2025 - 9/20/25", finalsTab: "", id: "1iatqDcFWffwrRzMKMDXUy5hAizRhfxYqGFSmOpzlQ7s", hasFinals: true },
   { name: "Broken Arrow Invitational", key: "brokenarrow", loc: "Broken Arrow, OK", year: "2024", prelimsTab: "Broken Arrow Invitational - 2024 - 10/5/24", finalsTab: "", id: "1iatqDcFWffwrRzMKMDXUy5hAizRhfxYqGFSmOpzlQ7s", hasFinals: true },
   { name: "Broken Arrow Invitational", key: "brokenarrow", loc: "Broken Arrow, OK", year: "2023", prelimsTab: "Broken Arrow Invitational - 2023 - 10/7/23", finalsTab: "", id: "1iatqDcFWffwrRzMKMDXUy5hAizRhfxYqGFSmOpzlQ7s", hasFinals: true },
   { name: "Broken Arrow Invitational", key: "brokenarrow", loc: "Broken Arrow, OK", year: "2022", prelimsTab: "Broken Arrow Invitational - 2022 - 10/1/22", finalsTab: "", id: "1iatqDcFWffwrRzMKMDXUy5hAizRhfxYqGFSmOpzlQ7s", hasFinals: true },
@@ -46,17 +44,22 @@ const fallbackDirectory = [
   { name: "Tiger Ambush Classic", key: "tigerambush", loc: "Edwardsville, IL", year: "2026", prelimsTab: "Tiger Ambush Classic - 2026 - 9/19/26", finalsTab: "", id: "1-UiYEzZIc0wF-fGSwi4uQZ92Y-itl7LGE4SBK2XKJOc", hasFinals: false },
   { name: "Tiger Ambush Classic", key: "tigerambush", loc: "Edwardsville, IL", year: "2025", prelimsTab: "Tiger Ambush Classic - 2025 - 9/20/25", finalsTab: "", id: "1-UiYEzZIc0wF-fGSwi4uQZ92Y-itl7LGE4SBK2XKJOc", hasFinals: false },
   { name: "Tiger Ambush Classic", key: "tigerambush", loc: "Edwardsville, IL", year: "2024", prelimsTab: "Tiger Ambush Classic - 2024 - 9/21/24", finalsTab: "", id: "1-UiYEzZIc0wF-fGSwi4uQZ92Y-itl7LGE4SBK2XKJOc", hasFinals: false },
+  { name: "Tiger Ambush Classic", key: "tigerambush", loc: "Edwardsville, IL", year: "2023", prelimsTab: "Tiger Ambush Classic - 2023 - 9/16/23", finalsTab: "", id: "1-UiYEzZIc0wF-fGSwi4uQZ92Y-itl7LGE4SBK2XKJOc", hasFinals: false },
+  { name: "Tiger Ambush Classic", key: "tigerambush", loc: "Edwardsville, IL", year: "2022", prelimsTab: "Tiger Ambush Classic - 2022 - 9/17/22", finalsTab: "", id: "1-UiYEzZIc0wF-fGSwi4uQZ92Y-itl7LGE4SBK2XKJOc", hasFinals: false },
+  { name: "Tiger Ambush Classic", key: "tigerambush", loc: "Edwardsville, IL", year: "2021", prelimsTab: "Tiger Ambush Classic - 2021 - 9/18/21", finalsTab: "", id: "1-UiYEzZIc0wF-fGSwi4uQZ92Y-itl7LGE4SBK2XKJOc", hasFinals: false },
 
-  // Metro-East Marching Classic (Single Round)
+  // Metro-East Marching Classic (MEMC)
   { name: "Metro-East Marching Classic (MEMC)", key: "memc", loc: "O'Fallon, IL", year: "2026", prelimsTab: "MEMC - 2026 - 9/12/26", finalsTab: "", id: "1yB6emCUzTJMDxpFFtxnZrCPQ9LaiLDU85xoWH5hSOjo", hasFinals: false },
   { name: "Metro-East Marching Classic (MEMC)", key: "memc", loc: "O'Fallon, IL", year: "2025", prelimsTab: "MEMC - 2025 - 9/13/25", finalsTab: "", id: "1yB6emCUzTJMDxpFFtxnZrCPQ9LaiLDU85xoWH5hSOjo", hasFinals: false },
+  { name: "Metro-East Marching Classic (MEMC)", key: "memc", loc: "O'Fallon, IL", year: "2024", prelimsTab: "MEMC - 2024 - 9/7/24", finalsTab: "", id: "1yB6emCUzTJMDxpFFtxnZrCPQ9LaiLDU85xoWH5hSOjo", hasFinals: false },
+  { name: "Metro-East Marching Classic (MEMC)", key: "memc", loc: "O'Fallon, IL", year: "2023", prelimsTab: "MEMC - 2023 - 9/9/23", finalsTab: "", id: "1yB6emCUzTJMDxpFFtxnZrCPQ9LaiLDU85xoWH5hSOjo", hasFinals: false },
 
   // River City Showcase
   { name: "River City Showcase", key: "rivercity", loc: "Washington, MO", year: "2026", prelimsTab: "River City Showcase - 2026 - 10/10/26", finalsTab: "", id: "1FSNl3icY0eNV0oJO5QHYfBUPt6Q9wCRW6rFQEm4VbN4", hasFinals: true },
   { name: "River City Showcase", key: "rivercity", loc: "Washington, MO", year: "2025", prelimsTab: "River City Showcase - 2025 - 10/11/26", finalsTab: "", id: "1FSNl3icY0eNV0oJO5QHYfBUPt6Q9wCRW6rFQEm4VbN4", hasFinals: true }
 ];
 
-// Cache for single-sheet parse results
+// Active parsed state
 let activeWorkbookData = {
   prelims: [],
   finals: [],
@@ -102,7 +105,7 @@ async function fetchMasterDirectory() {
 }
 
 // =============================================================================
-// Adaptive CSV Parser (Separates Prelims vs Finals in Single or Separate Sheets)
+// Adaptive CSV Parser (Accurately Catches Section Rows & Inline Columns)
 // =============================================================================
 function parseFullWorkbookCSV(rawCsvText) {
   const parsed = Papa.parse(rawCsvText, { skipEmptyLines: false });
@@ -113,22 +116,23 @@ function parseFullWorkbookCSV(rawCsvText) {
   let prelims = [];
   let finals = [];
   let detectedFinals = false;
+  let classColIdx = -1;
 
   const ignoreWords = [
     "music performance", "visual performance", "general effect", "judge panel",
     "individual", "ensemble", "total", "order", "school name", "field & timing",
-    "prelims", "finals", "class a", "class aa", "class aaa", "class aaaa",
-    "gold", "black", "white", "gold division", "black division", "white division",
-    "1st place", "2nd place", "3rd place", "overall rank", "class rank", "rating", "score"
+    "prelims", "finals", "1st place", "2nd place", "3rd place", "overall rank", 
+    "class rank", "rating", "score", "sub total", "music", "visual"
   ];
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i].map(c => (c || "").toString().trim());
     const line = row.join(" ").toLowerCase();
 
+    // Skip empty lines
     if (row.every(c => c === "")) continue;
 
-    // Detect Block Transitions
+    // 1. Detect Block Transitions (Prelims / Finals)
     if (line.includes("finals") && !line.includes("field & timing")) {
       currentBlock = "Finals";
       currentClass = "";
@@ -141,16 +145,40 @@ function parseFullWorkbookCSV(rawCsvText) {
       continue;
     }
 
-    // Detect Divisions & Classes if explicitly present
-    if (line.includes("gold division") || line === "gold") currentClass = "Gold Division";
-    else if (line.includes("black division") || line === "black") currentClass = "Black Division";
-    else if (line.includes("white division") || line === "white") currentClass = "White Division";
-    else if (line.includes("class aaaa")) currentClass = "Class AAAA";
-    else if (line.includes("class aaa")) currentClass = "Class AAA";
-    else if (line.includes("class aa")) currentClass = "Class AA";
-    else if (line.includes("class a")) currentClass = "Class A";
+    // 2. Check for Table Headers with an inline "Class" column (like BOA St. Louis)
+    const lowerRow = row.map(c => c.toLowerCase());
+    if (lowerRow.includes("school name") || lowerRow.includes("total")) {
+      const idx = lowerRow.indexOf("class");
+      if (idx !== -1) classColIdx = idx;
+      continue;
+    }
 
-    // Detect Candidate School Name in First 3 Columns
+    // 3. Detect Standalone Section Banners (MEMC, Lafayette, Tiger Ambush)
+    // Use word-boundary regex so "class a" never falsely fires on "class aaaa"
+    if (/\bclass\s*aaaa\b/i.test(line) || /\b4a\b/i.test(line)) {
+      currentClass = "Class AAAA";
+      continue;
+    } else if (/\bclass\s*aaa\b/i.test(line) || /\b3a\b/i.test(line)) {
+      currentClass = "Class AAA";
+      continue;
+    } else if (/\bclass\s*aa\b/i.test(line) || /\b2a\b/i.test(line)) {
+      currentClass = "Class AA";
+      continue;
+    } else if (/\bclass\s*a\b/i.test(line) || /\b1a\b/i.test(line)) {
+      currentClass = "Class A";
+      continue;
+    } else if (line.includes("gold division") || line === "gold") {
+      currentClass = "Gold Division";
+      continue;
+    } else if (line.includes("black division") || line === "black") {
+      currentClass = "Black Division";
+      continue;
+    } else if (line.includes("white division") || line === "white") {
+      currentClass = "White Division";
+      continue;
+    }
+
+    // 4. Identify Candidate School Name in the first 3 columns
     let candidateName = "";
     for (let c = 0; c < Math.min(row.length, 3); c++) {
       const cell = row[c];
@@ -172,7 +200,7 @@ function parseFullWorkbookCSV(rawCsvText) {
 
     if (!candidateName) continue;
 
-    // Scan backwards from row end for Total Score (35.0 to 100.0)
+    // 5. Identify Total Score (Scanning right-to-left for value between 35.0 and 100.0)
     let scoreVal = 0.0;
     for (let c = row.length - 1; c >= 0; c--) {
       const val = parseFloat(row[c]);
@@ -182,9 +210,18 @@ function parseFullWorkbookCSV(rawCsvText) {
       }
     }
 
+    // 6. Assign Classification (Inline column takes priority, then active section banner)
+    let rowClass = "";
+    if (classColIdx !== -1 && row[classColIdx] && row[classColIdx].length > 0) {
+      const inline = row[classColIdx].trim();
+      rowClass = inline.toLowerCase().startsWith("class") ? inline : `Class ${inline}`;
+    } else if (currentClass) {
+      rowClass = currentClass;
+    }
+
     const bandObj = {
       name: candidateName,
-      classification: currentClass || "",
+      classification: rowClass,
       round: currentBlock,
       state: "MO",
       base: scoreVal
@@ -354,7 +391,7 @@ function renderUI(comp, year, currentRound, tabName) {
   const finalsCard = document.getElementById("finalsBenchmarkCard");
 
   if (!fhc) {
-    // Hide spotlight if FHC is not in this specific round (e.g., FHC in Prelims but not in Finals)
+    // Hide spotlight if FHC is not in this specific round (e.g. FHC in Prelims but not in Finals)
     spotlightSection.classList.add("hidden");
   } else {
     spotlightSection.classList.remove("hidden");
