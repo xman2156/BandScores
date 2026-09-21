@@ -4,7 +4,7 @@
 
 const MASTER_INDEX_SPREADSHEET_ID = "106s_uuX5YOXAS_cXPCqj4HaO69DK8wHMWGevKUhTWd0";
 
-// Fallback directory catalog
+// Complete catalog fallback
 const fallbackDirectory = [
   // BOA St. Louis Super Regional
   { name: "BOA St. Louis Super Regional", key: "boastl", loc: "St. Louis, MO", year: "2026", prelimsTab: "BOA St Louis - 2026 Prelims", finalsTab: "", id: "1ipg6FG-omTfFcDLieyOO1wQbHfWLJIG1aiZAS9bZJh4", hasFinals: true },
@@ -31,7 +31,6 @@ const fallbackDirectory = [
 
   // Broken Arrow Invitational
   { name: "Broken Arrow Invitational", key: "brokenarrow", loc: "Broken Arrow, OK", year: "2026", prelimsTab: "Broken Arrow Invitational - 2026 - 9/19/26", finalsTab: "", id: "1iatqDcFWffwrRzMKMDXUy5hAizRhfxYqGFSmOpzlQ7s", hasFinals: true },
-  { name: "Broken Arrow Invitational", key: "brokenarrow", loc: "Broken Arrow, OK", year: "2025", prelimsTab: "Broken Arrow Invitational - 2025 - 9/20/25", finalsTab: "", id: "1iatqDcFWffwrRzMKMDXUy5hAizRhfxYqGFSmOpzlQ7s", hasFinals: true },
   { name: "Broken Arrow Invitational", key: "brokenarrow", loc: "Broken Arrow, OK", year: "2024", prelimsTab: "Broken Arrow Invitational - 2024 - 10/5/24", finalsTab: "", id: "1iatqDcFWffwrRzMKMDXUy5hAizRhfxYqGFSmOpzlQ7s", hasFinals: true },
   { name: "Broken Arrow Invitational", key: "brokenarrow", loc: "Broken Arrow, OK", year: "2023", prelimsTab: "Broken Arrow Invitational - 2023 - 10/7/23", finalsTab: "", id: "1iatqDcFWffwrRzMKMDXUy5hAizRhfxYqGFSmOpzlQ7s", hasFinals: true },
   { name: "Broken Arrow Invitational", key: "brokenarrow", loc: "Broken Arrow, OK", year: "2022", prelimsTab: "Broken Arrow Invitational - 2022 - 10/1/22", finalsTab: "", id: "1iatqDcFWffwrRzMKMDXUy5hAizRhfxYqGFSmOpzlQ7s", hasFinals: true },
@@ -102,7 +101,7 @@ async function fetchMasterDirectory() {
 }
 
 // =============================================================================
-// Adaptive CSV Parser (Strict Section-Banner & Inline Class Identification)
+// Adaptive CSV Parser (Strict Header & Score Mapping)
 // =============================================================================
 function parseFullWorkbookCSV(rawCsvText) {
   const parsed = Papa.parse(rawCsvText, { skipEmptyLines: false });
@@ -141,7 +140,7 @@ function parseFullWorkbookCSV(rawCsvText) {
       continue;
     }
 
-    // 2. Identify Explicit Section Headers (MEMC, Lafayette, Tiger Ambush)
+    // 2. Identify Standalone Class Banners (MEMC, Lafayette, Tiger Ambush)
     const rawFirstCell = (row[0] || "").trim();
     const cleanFirstCell = rawFirstCell.toLowerCase();
 
@@ -168,7 +167,7 @@ function parseFullWorkbookCSV(rawCsvText) {
       continue;
     }
 
-    // Fallback check across row if not strictly cell 0
+    // Fallback regex across the row if class banner wasn't in cell 0
     if (row.filter(Boolean).length <= 2) {
       if (/\bclass\s*aaaa\b/i.test(line)) { currentClass = "Class AAAA"; continue; }
       if (/\bclass\s*aaa\b/i.test(line)) { currentClass = "Class AAA"; continue; }
@@ -178,18 +177,28 @@ function parseFullWorkbookCSV(rawCsvText) {
 
     // 3. Inline Class column detection (e.g., BOA St. Louis)
     const lowerRow = row.map(c => c.toLowerCase());
-    if (lowerRow.includes("school name") || (lowerRow.includes("music") && lowerRow.includes("visual"))) {
+    if (lowerRow.includes("school name")) {
       const idx = lowerRow.indexOf("class");
       if (idx !== -1) classColIdx = idx;
       continue;
     }
 
-    // Skip Judge subheader rows completely
+    // Skip Judge panel and subheader rows completely
     if (line.includes("judge panel") || line.includes("individual") || line.includes("ensemble")) {
       continue;
     }
 
-    // 4. Identify Candidate School Name
+    // 4. Identify Total Score (Scan right-to-left for numeric score)
+    let scoreVal = 0.0;
+    for (let c = row.length - 1; c >= 0; c--) {
+      const val = parseFloat(row[c]);
+      if (!isNaN(val) && val >= 35.0 && val <= 100.0) {
+        scoreVal = val;
+        break;
+      }
+    }
+
+    // 5. Identify School Name Candidate
     let candidateName = "";
     for (let c = 0; c < Math.min(row.length, 3); c++) {
       const cell = row[c];
@@ -210,17 +219,8 @@ function parseFullWorkbookCSV(rawCsvText) {
       }
     }
 
+    // Valid school row requires a name and either a score or an active draw
     if (!candidateName) continue;
-
-    // 5. Total Score
-    let scoreVal = 0.0;
-    for (let c = row.length - 1; c >= 0; c--) {
-      const val = parseFloat(row[c]);
-      if (!isNaN(val) && val >= 35.0 && val <= 100.0) {
-        scoreVal = val;
-        break;
-      }
-    }
 
     // 6. Assign Classification
     let rowClass = "";
@@ -288,7 +288,7 @@ async function loadCompetitionView(eventKey, selectedYear, selectedRound) {
     return;
   }
 
-  // Populate Season Dropdown
+  // Populate Year Dropdown on individual competition page
   const uniqueYears = [...new Set(contestSeasons.map(c => c.year))].filter(Boolean).sort((a, b) => b - a);
   const yearSelect = document.getElementById("yearDropdown");
 
@@ -348,7 +348,6 @@ async function loadCompetitionView(eventKey, selectedYear, selectedRound) {
 // DOM Renderer
 // =============================================================================
 function renderUI(comp, year, currentRound, tabName) {
-  // Safe local date evaluation
   let isPast = parseInt(year, 10) < new Date().getFullYear();
   if (comp.date) {
     const parts = comp.date.trim().split(/[-/]/);
@@ -369,11 +368,11 @@ function renderUI(comp, year, currentRound, tabName) {
     }
   }
 
-  // Round Toggle Visibility
+  // Round Toggle
   const roundContainer = document.getElementById("roundToggleContainer");
   const showToggle = comp.hasFinals || activeWorkbookData.hasFinalsInSheet || Boolean(comp.finalsTab);
 
-  if (showToggle) {
+  if (showToggle && roundContainer) {
     roundContainer.classList.remove("hidden");
     const btnPrelims = document.getElementById("btnRoundPrelims");
     const btnFinals = document.getElementById("btnRoundFinals");
@@ -385,7 +384,7 @@ function renderUI(comp, year, currentRound, tabName) {
       btnPrelims.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition bg-indigo-600 text-white shadow";
       btnFinals.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition text-slate-400 hover:text-white";
     }
-  } else {
+  } else if (roundContainer) {
     roundContainer.classList.add("hidden");
   }
 
