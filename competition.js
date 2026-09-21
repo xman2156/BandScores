@@ -587,9 +587,6 @@ async function gatherFieldHistory(comp, allEntries, roster) {
   const totalRows = Object.values(history).reduce((sum, arr) => sum + arr.length, 0);
   console.log(`[gatherFieldHistory] ${sources.length} sheets → ${totalRows} band-score rows across ${roster.length} bands`);
 
-  const fhcHistory = history["Francis Howell Central"];
-  console.log("[gatherFieldHistory] FHC history:", fhcHistory);
-
   return history;
 }
 
@@ -727,8 +724,6 @@ async function enrichFHCSpotlightUpcoming(comp, contestSeasons, allEntries) {
   const proj = fhc?.projection;
   if (!proj) return;
 
-  // Gather FHC's recent completed scores + their most recent caption breakdown
-  // to give the outlook model concrete numbers to reason over.
   const fhcRecentScores = await gatherFHCRecentScores(comp, allEntries);
   const fhcCaptions = fhcRecentScores.length > 0
     ? (fhcRecentScores[fhcRecentScores.length - 1].captions || null)
@@ -774,8 +769,6 @@ async function enrichFHCSpotlightUpcoming(comp, contestSeasons, allEntries) {
   }
 }
 
-// FHC's completed 2026 contests in chronological order, with captions from the
-// most recent performance attached so the model has real numbers to cite.
 async function gatherFHCRecentScores(comp, allEntries) {
   const now = new Date();
   const completed = allEntries

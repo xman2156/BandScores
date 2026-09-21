@@ -62,7 +62,7 @@ function bandNameMatches(a, b) {
 // ---------------------------------------------------------------------------
 // Low-level Gemini call
 // ---------------------------------------------------------------------------
-async function callGemini(prompt, { schema = null, temperature = 0.3, maxTokens = 16000, cacheKey = null } = {}) {
+async function callGemini(prompt, { schema = null, temperature = 0.3, maxTokens = 24000, cacheKey = null } = {}) {
   if (!GEMINI_PROXY_URL || GEMINI_PROXY_URL.includes("YOUR-SUBDOMAIN")) {
     throw new Error("AI proxy URL not configured — edit config.js");
   }
@@ -312,9 +312,10 @@ const FIELD_PROJECTION_SCHEMA = {
           projectedScore:  { type: "number" },
           projectedRank:   { type: "number" },
           finalsChance:    { type: "number" },
-          confidence:      { type: "string", enum: ["low", "medium", "high"] }
+          confidence:      { type: "string", enum: ["low", "medium", "high"] },
+          note:            { type: "string" }
         },
-        required: ["name", "projectedScore", "projectedRank", "finalsChance", "confidence"]
+        required: ["name", "projectedScore", "projectedRank", "finalsChance", "confidence", "note"]
       }
     }
   },
@@ -375,6 +376,9 @@ ${comp.hasFinals
 - finalsChance (0-100%): evaluate each program's probability of advancing based on their projected position relative to the cutoff and the volatility evident in their historical record. A lock at rank #3 with a stable record deserves 95%+; a program sitting right on the cut line deserves something near 50%; a program many points below the cut deserves under 10%.`
   : `- This event has NO Finals round. Set finalsSize = 0, finalsCutoff = 0, and finalsChance = 0 for all bands.`}
 
+PER-BAND NOTE:
+For each band, write a one-sentence note explaining what historical scores drove the projection. Cite the specific years and decimal values.
+
 EXECUTIVE OVERVIEW:
 Write a 2-3 sentence overview covering:
 - The projected champion and what in their historical record justifies that placement.
@@ -400,5 +404,5 @@ async function generateContestOutlook(comp, fhcProjection, priorSeasonScores, ca
 
 async function generateFieldProjections(comp, roster, history, cacheKey = null) {
   const prompt = buildFieldProjectionPrompt(comp, roster, history);
-  return await callGemini(prompt, { schema: FIELD_PROJECTION_SCHEMA, temperature: 0.2, maxTokens: 12000, cacheKey });
+  return await callGemini(prompt, { schema: FIELD_PROJECTION_SCHEMA, temperature: 0.2, maxTokens: 24000, cacheKey });
 }
