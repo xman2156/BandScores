@@ -5,9 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Competition Profile & Recap Hub</title>
   
-  <!-- CDNs -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   
@@ -32,48 +30,20 @@
           </span>
         </div>
         <h1 id="contestTitle" class="text-3xl font-black tracking-tight text-white mt-1">Loading Contest...</h1>
-        <p id="contestSubtitle" class="text-xs sm:text-sm text-slate-400 mt-0.5">Fetching event scores, caption recaps, and rankings...</p>
+        <p id="contestSubtitle" class="text-xs sm:text-sm text-slate-400 mt-0.5">Fetching event scores and recaps...</p>
       </div>
 
-      <!-- Quick Switch Selector (Event + Year) -->
+      <!-- Adaptive Season / Year Selector -->
       <div class="flex items-center gap-3">
-        <label for="contestSelect" class="text-xs text-slate-400 font-bold uppercase tracking-wider hidden sm:inline">Jump Event & Year:</label>
-        <select id="contestSelect" onchange="const [e, y] = this.value.split('|'); switchEvent(e, y);" class="bg-slate-900 border border-slate-700 text-slate-200 font-bold text-xs rounded-xl px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
-          <optgroup label="2026 Contests">
-            <option value="renegade|2026">Renegade Review 2026</option>
-            <option value="lafayette|2026">Lafayette CoC 2026</option>
-            <option value="boastl|2026">BOA St. Louis 2026</option>
-          </optgroup>
-          <optgroup label="2025 Recaps">
-            <option value="renegade|2025">Renegade Review 2025</option>
-            <option value="lafayette|2025">Lafayette CoC 2025</option>
-            <option value="boastl|2025">BOA St. Louis 2025</option>
-          </optgroup>
-          <optgroup label="2024 Recaps">
-            <option value="renegade|2024">Renegade Review 2024</option>
-            <option value="lafayette|2024">Lafayette CoC 2024</option>
-            <option value="boastl|2024">BOA St. Louis 2024</option>
-            <option value="brokenarrow|2024">Broken Arrow 2024</option>
-          </optgroup>
-          <optgroup label="2023 Recaps">
-            <option value="renegade|2023">Renegade Review 2023</option>
-            <option value="boastl|2023">BOA St. Louis 2023</option>
-            <option value="brokenarrow|2023">Broken Arrow 2023</option>
-          </optgroup>
-          <optgroup label="2022 Recaps">
-            <option value="brokenarrow|2022">Broken Arrow 2022</option>
-            <option value="lafayette|2022">Lafayette CoC 2022</option>
-          </optgroup>
-          <optgroup label="2021 Recaps">
-            <option value="boastl|2021">BOA St. Louis 2021</option>
-            <option value="renegade|2021">Renegade Review 2021</option>
-          </optgroup>
+        <label for="yearDropdown" class="text-xs text-slate-400 font-bold uppercase tracking-wider">Season:</label>
+        <select id="yearDropdown" onchange="switchYear(this.value)" class="bg-slate-900 border border-slate-700 text-slate-200 font-bold text-xs rounded-xl px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+          <!-- Populated dynamically based on available tabs -->
         </select>
       </div>
     </header>
 
-    <!-- FHC Spotlight Box -->
-    <section class="rounded-2xl bg-gradient-to-r from-blue-950/70 via-slate-900 to-indigo-950/80 border border-blue-500/30 p-6 shadow-2xl relative overflow-hidden">
+    <!-- FHC Spotlight Box (Dynamically shown only when FHC is competing) -->
+    <section id="fhcSpotlightSection" class="hidden rounded-2xl bg-gradient-to-r from-blue-950/70 via-slate-900 to-indigo-950/80 border border-blue-500/30 p-6 shadow-2xl relative overflow-hidden">
       <div class="absolute -right-12 -bottom-12 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
       <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 relative z-10">
@@ -82,30 +52,30 @@
             <span class="px-2.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-bold text-xs uppercase tracking-wider">Spotlight Band</span>
             <span class="text-slate-400 text-xs font-medium">Francis Howell Central</span>
           </div>
-          <h2 id="fhcEventHeadline" class="text-2xl font-black tracking-tight text-white">Event Strategic Outlook</h2>
-          <p id="fhcEventSummary" class="text-xs sm:text-sm text-slate-300">Evaluating scores and caption achievements.</p>
+          <h2 id="fhcEventHeadline" class="text-2xl font-black tracking-tight text-white">Event Performance Summary</h2>
+          <p id="fhcEventSummary" class="text-xs sm:text-sm text-slate-300">Evaluating scores and contest standing.</p>
         </div>
 
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 w-full lg:w-auto">
-          <div class="stat-card">
-            <div id="statLabel1" class="stat-label">Final Score</div>
+        <div class="flex flex-wrap gap-4 w-full lg:w-auto">
+          <!-- Stat 1: Official Score / Historical Mark -->
+          <div class="stat-card flex-1 min-w-[140px]">
+            <div id="statLabel1" class="stat-label">Score</div>
             <div id="fhcStatPeak" class="stat-value text-white">--</div>
-            <div id="fhcStatPeakSub" class="stat-sub">Total Achieved</div>
+            <div id="fhcStatPeakSub" class="stat-sub">Official Total</div>
           </div>
-          <div class="stat-card border-indigo-500/30 bg-indigo-950/20">
-            <div id="statLabel2" class="stat-label text-indigo-400">Class / Caption</div>
-            <div id="fhcStatTarget" class="stat-value text-indigo-300 font-mono">--</div>
-            <div id="fhcStatTargetSub" class="stat-sub text-indigo-400">Class Benchmark</div>
+
+          <!-- Stat 2: Standing / Projected Standing -->
+          <div class="stat-card flex-1 min-w-[140px]">
+            <div id="statLabel2" class="stat-label">Standing</div>
+            <div id="fhcStatRank" class="stat-value text-indigo-400">--</div>
+            <div id="fhcStatRankSub" class="stat-sub text-slate-400">Placement</div>
           </div>
-          <div class="stat-card">
-            <div id="statLabel3" class="stat-label">Official Placement</div>
-            <div id="fhcStatRank" class="stat-value text-white">--</div>
-            <div id="fhcStatRankSub" class="stat-sub text-amber-400">Standing</div>
-          </div>
-          <div class="stat-card border-emerald-500/30 bg-emerald-950/20">
-            <div id="statLabel4" class="stat-label text-emerald-400">Top Benchmark</div>
+
+          <!-- Stat 3: Finals Benchmark (Shown ONLY for Multi-Round Prelims/Finals Events) -->
+          <div id="finalsBenchmarkCard" class="stat-card border-emerald-500/30 bg-emerald-950/20 flex-1 min-w-[140px] hidden">
+            <div id="statLabel3" class="stat-label text-emerald-400">Finals Benchmark</div>
             <div id="fhcStatCutoff" class="stat-value text-emerald-300 font-mono">--</div>
-            <div id="fhcStatCutoffSub" class="stat-sub text-emerald-400">Champion Score</div>
+            <div id="fhcStatCutoffSub" class="stat-sub text-emerald-400">Score to Advance</div>
           </div>
         </div>
       </div>
@@ -120,7 +90,7 @@
           <div class="flex items-center justify-between mb-3">
             <h3 id="rosterTitle" class="tile-title">
               <i data-lucide="list-ordered" class="w-4 h-4 text-indigo-400"></i>
-              Performance Order / Class Roster
+              Performance Order & Roster
             </h3>
             <span id="bandCountBadge" class="badge-indigo">-- Programs</span>
           </div>
@@ -130,7 +100,7 @@
                 <tr>
                   <th class="py-2.5 px-3">#</th>
                   <th class="py-2.5 px-3">School Name</th>
-                  <th class="py-2.5 px-3 text-right">Flight / Class</th>
+                  <th class="py-2.5 px-3 text-right">Class / Round</th>
                 </tr>
               </thead>
               <tbody id="rosterTableBody" class="divide-y divide-slate-800/60 font-medium text-slate-300">
@@ -139,7 +109,7 @@
             </table>
           </div>
         </div>
-        <p class="tile-footer">Official registration roster and performance order.</p>
+        <p class="tile-footer">Contest roster and performance sequence.</p>
       </section>
 
       <!-- Right Column: Official Results / Leaderboard -->
@@ -148,7 +118,7 @@
           <div class="flex items-center justify-between mb-3">
             <h3 id="leaderboardTitle" class="tile-title">
               <i data-lucide="award" class="w-4 h-4 text-emerald-400"></i>
-              Official Final Results & Recaps
+              Results & Standings
             </h3>
             <span id="leaderboardBadge" class="badge-emerald">Official Results</span>
           </div>
@@ -159,7 +129,7 @@
                   <th class="py-2.5 px-3">Rank</th>
                   <th class="py-2.5 px-3">School Name</th>
                   <th id="colScore" class="py-2.5 px-3 text-right font-mono">Total Score</th>
-                  <th id="colStatus" class="py-2.5 px-3 text-right">Division / Placement</th>
+                  <th id="colStatus" class="py-2.5 px-3 text-right">Class / Round</th>
                 </tr>
               </thead>
               <tbody id="leaderboardTableBody" class="divide-y divide-slate-800/60 font-medium text-slate-300">
@@ -168,7 +138,7 @@
             </table>
           </div>
         </div>
-        <p class="tile-footer">Official verified recap scores straight from contest archives.</p>
+        <p class="tile-footer">Scores direct from contest spreadsheets.</p>
       </section>
 
     </main>
