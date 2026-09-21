@@ -45,7 +45,7 @@ function setCache(key, value, ttlHours = 24) {
 //   network err     → retry same model up to 3x with backoff
 //   400/401/403     → request-wide problem, abort everything
 // ---------------------------------------------------------------------------
-async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens = 800 } = {}) {
+async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens = 4000 } = {}) {
   if (!GEMINI_PROXY_URL || GEMINI_PROXY_URL.includes("YOUR-SUBDOMAIN")) {
     throw new Error("AI proxy URL not configured — edit config.js");
   }
@@ -53,7 +53,10 @@ async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens 
   const generationConfig = {
     temperature,
     maxOutputTokens: maxTokens,
-    responseMimeType: "application/json"
+    responseMimeType: "application/json",
+    // Gemini 3.x thinks by default, and thinking tokens count against maxOutputTokens.
+    // Our prompts are specific enough that we don't need the model reasoning internally.
+    thinkingConfig: { thinkingBudget: 0 }
   };
   if (schema) generationConfig.responseSchema = schema;
 
@@ -87,7 +90,7 @@ async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens 
       } catch (netErr) {
         lastError = netErr;
         console.warn(`[ai] ${model} attempt ${attempt + 1}: network error`);
-        continue; // retry same model
+        continue;
       }
 
       // --- Success ---
@@ -102,7 +105,7 @@ async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens 
         }
       }
 
-      // --- Non-2xx: read the body for the log, then decide ---
+      // --- Non-2xx: read body for the log, then decide ---
       const errText = await res.text();
       lastError = new Error(`${model} → ${res.status}: ${errText.slice(0, 160)}`);
 
@@ -113,13 +116,22 @@ async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens 
         break;
       }
 
+      // 400: often means this model doesn't support thinkingConfig.
+      // Retry once without it before giving up.
+      if (res.status === 400 && generationConfig.thinkingConfig) {
+        console.warn(`[ai] ${model} rejected thinkingConfig, retrying without it`);
+        delete generationConfig.thinkingConfig;
+        attempt--; // don't count this as a real attempt
+        continue;
+      }
+
       // Transient: retry same model
       if ([429, 502, 503, 504].includes(res.status)) {
         console.warn(`[ai] ${model} attempt ${attempt + 1} got ${res.status}, retrying`);
         continue;
       }
 
-      // Anything else (400/401/403) — request-wide problem, no point trying other models
+      // Anything else — request-wide problem, no point trying other models
       throw lastError;
     }
   }
@@ -269,10 +281,10 @@ Output JSON only, matching this schema exactly: ${JSON.stringify(OUTLOOK_SCHEMA)
 // ---------------------------------------------------------------------------
 async function generatePerformanceSummary(comp, fhc, roster, currentRound, priorSeasonScores) {
   const prompt = buildSummaryPrompt(comp, fhc, roster, currentRound, priorSeasonScores);
-  return await callGemini(prompt, { schema: SUMMARY_SCHEMA, temperature: 0.5 });
+  return await callGemini(prompt, { schema: SUMMARY_SCHEMA, temperature: 0.5, maxTokens: 4000 });
 }
 
 async function generateContestOutlook(comp, roster, priorSeasonScores, currentSeasonScores) {
   const prompt = buildOutlookPrompt(comp, roster, priorSeasonScores, currentSeasonScores);
-  return await callGemini(prompt, { schema: OUTLOOK_SCHEMA, temperature: 0.6 });
+  return await callGemini(prompt, { schema: OUTLOOK_SCHEMA, temperature: 0.6, maxTokens: 4000 });
 }
