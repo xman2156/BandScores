@@ -1,10 +1,10 @@
 // =============================================================================
-// Live Master Directory Connection & Adaptive Recap Engine
+// Live Master Directory Connection & Universal Adaptive Recap Engine
 // =============================================================================
 
 const MASTER_INDEX_SPREADSHEET_ID = "106s_uuX5YOXAS_cXPCqj4HaO69DK8wHMWGevKUhTWd0";
 
-// Complete catalog fallback
+// Fallback directory catalog
 const fallbackDirectory = [
   // BOA St. Louis Super Regional
   { name: "BOA St. Louis Super Regional", key: "boastl", loc: "St. Louis, MO", year: "2026", prelimsTab: "BOA St Louis - 2026 Prelims", finalsTab: "", id: "1ipg6FG-omTfFcDLieyOO1wQbHfWLJIG1aiZAS9bZJh4", hasFinals: true },
@@ -101,14 +101,14 @@ async function fetchMasterDirectory() {
 }
 
 // =============================================================================
-// Adaptive CSV Parser (Strict Header & Score Mapping)
+// Adaptive CSV Parser (Zero Reset Bugs, Full BOA + MEMC + Lafayette Support)
 // =============================================================================
 function parseFullWorkbookCSV(rawCsvText) {
   const parsed = Papa.parse(rawCsvText, { skipEmptyLines: false });
   const rows = parsed.data;
 
   let currentBlock = "Prelims";
-  let currentClass = "";
+  let activeSectionClass = "";
   let prelims = [];
   let finals = [];
   let detectedFinals = false;
@@ -127,68 +127,67 @@ function parseFullWorkbookCSV(rawCsvText) {
 
     if (row.every(c => c === "")) continue;
 
-    // 1. Prelims vs Finals section switches
+    // 1. Prelims vs Finals round switches
     if (line.includes("finals") && !line.includes("field & timing")) {
       currentBlock = "Finals";
-      currentClass = "";
+      activeSectionClass = "";
       detectedFinals = true;
       continue;
     }
     if (line.includes("prelims")) {
       currentBlock = "Prelims";
-      currentClass = "";
+      activeSectionClass = "";
       continue;
     }
 
-    // 2. Identify Standalone Class Banners (MEMC, Lafayette, Tiger Ambush)
-    const rawFirstCell = (row[0] || "").trim();
-    const cleanFirstCell = rawFirstCell.toLowerCase();
+    // 2. Identify Section Banners (MEMC, Lafayette, Tiger Ambush)
+    const rawFirstCell = (row[0] || "").trim().toLowerCase();
 
-    if (/^class\s*aaaa$/i.test(cleanFirstCell) || cleanFirstCell === "class 4a") {
-      currentClass = "Class AAAA";
+    if (rawFirstCell.startsWith("class aaaa") || rawFirstCell === "class 4a") {
+      activeSectionClass = "Class AAAA";
       continue;
-    } else if (/^class\s*aaa$/i.test(cleanFirstCell) || cleanFirstCell === "class 3a") {
-      currentClass = "Class AAA";
+    } else if (rawFirstCell.startsWith("class aaa") || rawFirstCell === "class 3a") {
+      activeSectionClass = "Class AAA";
       continue;
-    } else if (/^class\s*aa$/i.test(cleanFirstCell) || cleanFirstCell === "class 2a") {
-      currentClass = "Class AA";
+    } else if (rawFirstCell.startsWith("class aa") || rawFirstCell === "class 2a") {
+      activeSectionClass = "Class AA";
       continue;
-    } else if (/^class\s*a$/i.test(cleanFirstCell) || cleanFirstCell === "class 1a") {
-      currentClass = "Class A";
+    } else if (rawFirstCell.startsWith("class a") || rawFirstCell === "class 1a") {
+      activeSectionClass = "Class A";
       continue;
-    } else if (cleanFirstCell === "gold" || cleanFirstCell === "gold division") {
-      currentClass = "Gold Division";
+    } else if (rawFirstCell === "gold" || rawFirstCell === "gold division") {
+      activeSectionClass = "Gold Division";
       continue;
-    } else if (cleanFirstCell === "black" || cleanFirstCell === "black division") {
-      currentClass = "Black Division";
+    } else if (rawFirstCell === "black" || rawFirstCell === "black division") {
+      activeSectionClass = "Black Division";
       continue;
-    } else if (cleanFirstCell === "white" || cleanFirstCell === "white division") {
-      currentClass = "White Division";
+    } else if (rawFirstCell === "white" || rawFirstCell === "white division") {
+      activeSectionClass = "White Division";
       continue;
     }
 
-    // Fallback regex across the row if class banner wasn't in cell 0
+    // Secondary banner check if row only has 1 or 2 filled cells
     if (row.filter(Boolean).length <= 2) {
-      if (/\bclass\s*aaaa\b/i.test(line)) { currentClass = "Class AAAA"; continue; }
-      if (/\bclass\s*aaa\b/i.test(line)) { currentClass = "Class AAA"; continue; }
-      if (/\bclass\s*aa\b/i.test(line)) { currentClass = "Class AA"; continue; }
-      if (/\bclass\s*a\b/i.test(line)) { currentClass = "Class A"; continue; }
+      if (/\bclass\s*aaaa\b/i.test(line)) { activeSectionClass = "Class AAAA"; continue; }
+      if (/\bclass\s*aaa\b/i.test(line)) { activeSectionClass = "Class AAA"; continue; }
+      if (/\bclass\s*aa\b/i.test(line)) { activeSectionClass = "Class AA"; continue; }
+      if (/\bclass\s*a\b/i.test(line)) { activeSectionClass = "Class A"; continue; }
     }
 
-    // 3. Inline Class column detection (e.g., BOA St. Louis)
+    // 3. BOA Inline Column Detection (Direct check for "Class" in the header row)
     const lowerRow = row.map(c => c.toLowerCase());
-    if (lowerRow.includes("school name")) {
-      const idx = lowerRow.indexOf("class");
-      if (idx !== -1) classColIdx = idx;
+    const cIdx = lowerRow.indexOf("class");
+    if (cIdx !== -1) {
+      classColIdx = cIdx;
       continue;
     }
 
-    // Skip Judge panel and subheader rows completely
+    // Skip caption headers, judge panels, subheadings
     if (line.includes("judge panel") || line.includes("individual") || line.includes("ensemble")) {
       continue;
     }
 
-    // 4. Identify Total Score (Scan right-to-left for numeric score)
+    // 4. Extract Total Score (Right to Left scan for numbers 35-100)
     let scoreVal = 0.0;
     for (let c = row.length - 1; c >= 0; c--) {
       const val = parseFloat(row[c]);
@@ -198,7 +197,7 @@ function parseFullWorkbookCSV(rawCsvText) {
       }
     }
 
-    // 5. Identify School Name Candidate
+    // 5. Identify Candidate School Name
     let candidateName = "";
     for (let c = 0; c < Math.min(row.length, 3); c++) {
       const cell = row[c];
@@ -219,21 +218,20 @@ function parseFullWorkbookCSV(rawCsvText) {
       }
     }
 
-    // Valid school row requires a name and either a score or an active draw
     if (!candidateName) continue;
 
-    // 6. Assign Classification
-    let rowClass = "";
+    // 6. Assign Classification (Inline Column > Section Banner)
+    let finalClass = "";
     if (classColIdx !== -1 && row[classColIdx] && row[classColIdx].length > 0) {
-      const inline = row[classColIdx].trim();
-      rowClass = inline.toLowerCase().startsWith("class") ? inline : `Class ${inline}`;
-    } else if (currentClass) {
-      rowClass = currentClass;
+      const val = row[classColIdx].trim();
+      finalClass = val.toLowerCase().startsWith("class") ? val : `Class ${val}`;
+    } else if (activeSectionClass) {
+      finalClass = activeSectionClass;
     }
 
     const bandObj = {
       name: candidateName,
-      classification: rowClass,
+      classification: finalClass,
       round: currentBlock,
       state: "MO",
       base: scoreVal
@@ -288,7 +286,7 @@ async function loadCompetitionView(eventKey, selectedYear, selectedRound) {
     return;
   }
 
-  // Populate Year Dropdown on individual competition page
+  // Populate Year Dropdown
   const uniqueYears = [...new Set(contestSeasons.map(c => c.year))].filter(Boolean).sort((a, b) => b - a);
   const yearSelect = document.getElementById("yearDropdown");
 
@@ -348,25 +346,7 @@ async function loadCompetitionView(eventKey, selectedYear, selectedRound) {
 // DOM Renderer
 // =============================================================================
 function renderUI(comp, year, currentRound, tabName) {
-  let isPast = parseInt(year, 10) < new Date().getFullYear();
-  if (comp.date) {
-    const parts = comp.date.trim().split(/[-/]/);
-    if (parts.length === 3) {
-      let y, m, d;
-      if (parts[0].length === 4) {
-        y = parseInt(parts[0], 10);
-        m = parseInt(parts[1], 10) - 1;
-        d = parseInt(parts[2], 10);
-      } else {
-        m = parseInt(parts[0], 10) - 1;
-        d = parseInt(parts[1], 10);
-        y = parseInt(parts[2], 10);
-        if (y < 100) y += 2000;
-      }
-      const eventDate = new Date(y, m, d, 23, 59, 59);
-      isPast = isPast || eventDate < new Date();
-    }
-  }
+  const isPast = parseInt(year, 10) < new Date().getFullYear();
 
   // Round Toggle
   const roundContainer = document.getElementById("roundToggleContainer");
