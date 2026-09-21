@@ -1,40 +1,47 @@
 // =============================================================================
 // Live Google Spreadsheet Registry
-// Paste the Spreadsheet ID for each file in your Google Drive
-// (Found between /d/ and /edit in each spreadsheet's URL)
+// Verified Spreadsheet IDs for all 8 competition files in Google Drive
 // =============================================================================
 
 const competitionRegistry = {
+  // 1. Lafayette Contest of Champions
   lafayette: {
     spreadsheetId: "10e1ghOqkzOyNt7lPOC_TRiw_WWPU2cIHVzxUK_YCPd4",
+    date: "2026-09-26",
     tabs: {
       "2026": "Lafayette Contest of Champions - 2026 Prelims - 9/26/26",
       "2025": "Lafayette Contest of Champions - 2025 - 9/20/25",
       "2024": "Lafayette Contest of Champions - 2024 - 9/28/24",
-      "2023": "Lafayette Contest of Champions - 2023 - 9/30/23"
+      "2023": "Lafayette Contest of Champions - 2023 - 9/30/23",
+      "2022": "Lafayette Contest of Champions - 2022 - 9/24/22"
     },
     meta: {
       title: "Lafayette Contest of Champions",
       subtitle: "Wildwood, MO • Prelims & Finals",
       tag: "LAFAYETTE COC",
-      fhcHeadline: "FHC Lafayette Campaign & History",
+      fhcHeadline: "FHC Lafayette Campaign & Projections",
       fhcSummary: "FHC swept all captions in the Black Division in 2024 (77.750) and took 2nd in Finals (80.950).",
       fhcPeak: "80.950",
-      fhcPeakSub: "2024 Finals Score",
+      fhcPeakSub: "2024 Finals",
       fhcTarget: "Alum",
       fhcTargetSub: "Class AA Benchmark",
       fhcRank: "#2 ('24)",
       fhcCutoff: "78.20+",
-      fhcCutoffSub: "Finals Standard"
+      fhcCutoffSub: "Top Flight Cutoff"
     }
   },
 
+  // 2. Renegade Review
   renegade: {
     spreadsheetId: "1aOD7KDcLPMYkFEkxQUcoYY48amnPMWs01s96t6yNqJo",
+    date: "2026-10-10",
     tabs: {
       "2026": "Renegade Review - 2026 - 10/10/26",
       "2025": "Renegade Review - 2025 - 10/11/25",
-      "2024": "Renegade Review - 2024 - 10/12/25"
+      "2024": "Renegade Review - 2024 - 10/12/25",
+      "2023": "Renegade Review - 2023 - 10/14/23",
+      "2022": "Renegade Review - 2022 - 10/8/22",
+      "2021": "Renegade Review - 2021 - 10/9/21"
     },
     meta: {
       title: "Renegade Review",
@@ -52,21 +59,24 @@ const competitionRegistry = {
     }
   },
 
+  // 3. Bands of America St. Louis Super Regional
   boastl: {
     spreadsheetId: "1ipg6FG-omTfFcDLieyOO1wQbHfWLJIG1aiZAS9bZJh4",
+    date: "2026-10-23",
     tabs: {
       "2026": "BOA St Louis - 2026 Prelims",
       "2025": "BOA St Louis - 2025 Finals - 10/18/25",
       "2024": "BOA St Louis - 2024 Finals - 10/26/24",
-      "2023": "BOA St Louis - 2023 Prelims - 10/27/23",
-      "2021": "BOA St Louis - 2021 Finals - 10/23/21"
+      "2023": "BOA St Louis - 2023 Finals - 10/28/23",
+      "2022": "BOA St Louis - 2022 Prelims - 10/14/22",
+      "2021": "BOA St Louis - 2021 Prelims - 10/22/21"
     },
     meta: {
       title: "BOA St. Louis Super Regional",
       subtitle: "The Dome at America's Center, St. Louis, MO",
       tag: "BOA SUPER REGIONAL",
       fhcHeadline: "FHC Class AA Super Regional Track Record",
-      fhcSummary: "FHC has appeared continuously: 69.700 (2021), 75.100 (2023), 71.200 (2024), and 74.600 (2025).",
+      fhcSummary: "FHC has appeared continuously in past regional cycles.",
       fhcPeak: "75.100",
       fhcPeakSub: "2023 Prelims Score",
       fhcTarget: "74.800",
@@ -77,11 +87,12 @@ const competitionRegistry = {
     }
   },
 
+  // 4. Broken Arrow Invitational
   brokenarrow: {
     spreadsheetId: "1iatqDcFWffwrRzMKMDXUy5hAizRhfxYqGFSmOpzlQ7s",
+    date: "2026-09-19",
     tabs: {
       "2026": "Broken Arrow Invitational - 2026 - 9/19/26",
-      "2025": "Broken Arrow Invitational - 2025 - 9/20/25",
       "2024": "Broken Arrow Invitational - 2024 - 10/5/24",
       "2023": "Broken Arrow Invitational - 2023 - 10/7/23",
       "2022": "Broken Arrow Invitational - 2022 - 10/1/22"
@@ -91,7 +102,7 @@ const competitionRegistry = {
       subtitle: "Broken Arrow, OK • Regional Invitational",
       tag: "BA INVITATIONAL",
       fhcHeadline: "Regional Performance Record",
-      fhcSummary: "Early-season benchmark scores for Oklahoma and national contender programs.",
+      fhcSummary: "Early-season benchmark scores for Oklahoma and regional programs.",
       fhcPeak: "82.550",
       fhcPeakSub: "Southmoore '23 Champ",
       fhcTarget: "--",
@@ -102,8 +113,10 @@ const competitionRegistry = {
     }
   },
 
+  // 5. Deer Creek Invitational
   deercreek: {
     spreadsheetId: "1XTo8j1gzAYEbnaIYbGSjWaKMCqCXTM484-6Q29Gcy_k",
+    date: "2026-09-19",
     tabs: {
       "2026": "Deer Creek Invitational - 2026 - 9/19/26",
       "2025": "Deer Creek Invitational - 2025 - 9/20/25",
@@ -115,7 +128,7 @@ const competitionRegistry = {
       subtitle: "Edmond, OK • Contest Finals",
       tag: "DEER CREEK INV",
       fhcHeadline: "Oklahoma Early Season Benchmark",
-      fhcSummary: "Historical scoring trajectory for Oklahoma 6A contenders.",
+      fhcSummary: "Scoring trajectory for Oklahoma 6A contenders.",
       fhcPeak: "83.800",
       fhcPeakSub: "Southmoore '26 Score",
       fhcTarget: "--",
@@ -124,12 +137,89 @@ const competitionRegistry = {
       fhcCutoff: "75.00+",
       fhcCutoffSub: "Finals Spread"
     }
+  },
+
+  // 6. Tiger Ambush Classic (Edwardsville, IL)
+  tigerambush: {
+    spreadsheetId: "1-UiYEzZIc0wF-fGSwi4uQZ92Y-itl7LGE4SBK2XKJOc",
+    date: "2026-09-19",
+    tabs: {
+      "2026": "Tiger Ambush Classic - 2026 - 9/19/26",
+      "2025": "Tiger Ambush Classic - 2025 - 9/20/25",
+      "2024": "Tiger Ambush Classic - 2024 - 9/21/24",
+      "2023": "Tiger Ambush Classic - 2023 - 9/16/23",
+      "2022": "Tiger Ambush Classic - 2022 - 9/17/22",
+      "2021": "Tiger Ambush Classic - 2021 - 9/18/21"
+    },
+    meta: {
+      title: "Tiger Ambush Classic",
+      subtitle: "Edwardsville, IL • Official Contest Recap",
+      tag: "TIGER AMBUSH",
+      fhcHeadline: "Tiger Ambush Performance Record",
+      fhcSummary: "Early-season regional caption tracking.",
+      fhcPeak: "71.800",
+      fhcPeakSub: "Class AAAA Mark",
+      fhcTarget: "--",
+      fhcTargetSub: "Regional Comparison",
+      fhcRank: "--",
+      fhcCutoff: "78.400",
+      fhcCutoffSub: "Champion Score"
+    }
+  },
+
+  // 7. Metro-East Marching Classic (MEMC)
+  memc: {
+    spreadsheetId: "1yB6emCUzTJMDxpFFtxnZrCPQ9LaiLDU85xoWH5hSOjo",
+    date: "2026-09-12",
+    tabs: {
+      "2026": "MEMC - 2026 - 9/12/26",
+      "2025": "MEMC - 2025 - 9/13/25",
+      "2024": "MEMC - 2024 - 9/7/24",
+      "2023": "MEMC - 2023 - 9/9/23"
+    },
+    meta: {
+      title: "Metro-East Marching Classic (MEMC)",
+      subtitle: "O'Fallon, IL • Official Class Recap",
+      tag: "MEMC RECAP",
+      fhcHeadline: "MEMC Performance Record",
+      fhcSummary: "Early-season caption tracking and class placement.",
+      fhcPeak: "66.050",
+      fhcPeakSub: "Class AAA Mark",
+      fhcTarget: "--",
+      fhcTargetSub: "Regional Comparison",
+      fhcRank: "--",
+      fhcCutoff: "72.300",
+      fhcCutoffSub: "Grand Champ Score"
+    }
+  },
+
+  // 8. River City Showcase (Washington, MO)
+  rivercity: {
+    spreadsheetId: "1FSNl3icY0eNV0oJO5QHYfBUPt6Q9wCRW6rFQEm4VbN4",
+    date: "2026-10-10",
+    tabs: {
+      "2026": "River City Showcase - 2026 - 10/10/26",
+      "2025": "River City Showcase - 2025 - 10/11/26"
+    },
+    meta: {
+      title: "River City Showcase",
+      subtitle: "Washington, MO • Prelims & Finals",
+      tag: "RIVER CITY",
+      fhcHeadline: "River City Performance Record",
+      fhcSummary: "Mid-season caption tracking and finals placement.",
+      fhcPeak: "73.150",
+      fhcPeakSub: "2025 Finals",
+      fhcTarget: "--",
+      fhcTargetSub: "Regional Comparison",
+      fhcRank: "#7 ('25)",
+      fhcCutoff: "81.400",
+      fhcCutoffSub: "Champion Score"
+    }
   }
 };
 
 // =============================================================================
 // Adaptive Universal Parser
-// Intelligently scans columns to identify school names regardless of layout
 // =============================================================================
 function parseRawRecapCSV(rawCsvText) {
   const parsed = Papa.parse(rawCsvText, { skipEmptyLines: false });
@@ -139,13 +229,13 @@ function parseRawRecapCSV(rawCsvText) {
   let currentClass = "Open Flight";
   let roster = [];
 
-  // Words that are never school names
   const ignoreWords = [
     "music performance", "visual performance", "general effect", "judge panel",
     "individual", "ensemble", "total", "order", "school name", "field & timing",
     "prelims", "finals", "class a", "class aa", "class aaa", "class aaaa",
     "gold", "black", "white", "gold division", "black division", "white division",
-    "oustanding music", "outstanding visual", "outstanding general effect", "1st place", "2nd place", "3rd place"
+    "oustanding music", "outstanding music", "outstanding visual", "outstanding general effect",
+    "1st place", "2nd place", "3rd place", "overall rank", "class rank", "rating"
   ];
 
   for (let i = 0; i < rows.length; i++) {
@@ -154,7 +244,6 @@ function parseRawRecapCSV(rawCsvText) {
 
     if (row.every(c => c === "")) continue;
 
-    // Detect Section Banners
     if (line.includes("finals") && !line.includes("field & timing")) {
       currentBlock = "Finals";
       continue;
@@ -164,7 +253,6 @@ function parseRawRecapCSV(rawCsvText) {
       continue;
     }
 
-    // Detect Class/Division Markers
     if (line.includes("gold division") || line === "gold") currentClass = "Gold Division";
     else if (line.includes("black division") || line === "black") currentClass = "Black Division";
     else if (line.includes("white division") || line === "white") currentClass = "White Division";
@@ -173,20 +261,19 @@ function parseRawRecapCSV(rawCsvText) {
     else if (line.includes("class aa")) currentClass = "Class AA";
     else if (line.includes("class a")) currentClass = "Class A";
 
-    // Search for a candidate School Name in the row
     let candidateName = "";
     for (let c = 0; c < Math.min(row.length, 3); c++) {
       const cell = row[c];
       const cellLower = cell.toLowerCase();
 
-      // If cell has text, isn't a pure number, and isn't a known header word
       if (
         cell.length > 2 &&
         isNaN(Number(cell)) &&
         !ignoreWords.includes(cellLower) &&
         !cellLower.startsWith("judge") &&
         !cellLower.startsWith("class") &&
-        !cellLower.includes("division")
+        !cellLower.includes("division") &&
+        !cellLower.includes("stats")
       ) {
         candidateName = cell;
         break;
@@ -195,11 +282,9 @@ function parseRawRecapCSV(rawCsvText) {
 
     if (!candidateName) continue;
 
-    // Scan backwards from the end of the row for the highest number (Total Score)
     let scoreVal = 0.0;
     for (let c = row.length - 1; c >= 0; c--) {
       const val = parseFloat(row[c]);
-      // Match reasonable score totals (between 40.0 and 100.0)
       if (!isNaN(val) && val >= 40.0 && val <= 100.0) {
         scoreVal = val;
         break;
@@ -218,7 +303,7 @@ function parseRawRecapCSV(rawCsvText) {
 }
 
 // =============================================================================
-// Router & Fetch Execution
+// Router & Live Network Ingestion Engine
 // =============================================================================
 function getUrlParams() {
   const urlParams = new URLSearchParams(window.location.search);
@@ -242,41 +327,33 @@ async function fetchAndRenderCompetition(eventKey, year) {
   }
 
   const tabName = comp.tabs[year] || Object.values(comp.tabs)[0];
-
-  if (!comp.spreadsheetId || comp.spreadsheetId.includes("YOUR_")) {
-    showDiagnostic(`Spreadsheet ID not configured in competition.js for "${eventKey}".`);
-    populateCompetitionView(comp.meta, [], year);
-    return;
-  }
-
   const endpoint = `https://docs.google.com/spreadsheets/d/${comp.spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}`;
 
   try {
     const response = await fetch(endpoint);
     const rawCsvText = await response.text();
 
-    // Check if Google returned an HTML error page (permission denied or tab not found)
     if (rawCsvText.trim().startsWith("<!DOCTYPE html>") || rawCsvText.includes("google-site-verification")) {
-      showDiagnostic(`Google returned an error page. Check that the tab name "${tabName}" exactly matches the tab name in Google Sheets and that General Access is set to "Anyone with the link can view".`);
-      populateCompetitionView(comp.meta, [], year);
+      showDiagnostic(`Google permission error: Ensure the spreadsheet for "${comp.meta.title}" is shared with "Anyone with the link can view".`);
+      populateCompetitionView(comp, [], year);
       return;
     }
 
     const liveRoster = parseRawRecapCSV(rawCsvText);
+    clearDiagnostic();
 
     if (liveRoster.length === 0) {
-      showDiagnostic(`Sheet connected, but 0 schools matched. Verify the tab contains school names.`);
+      showDiagnostic(`Connected to sheet, but found 0 school rows on tab "${tabName}".`);
     }
 
-    populateCompetitionView(comp.meta, liveRoster, year);
+    populateCompetitionView(comp, liveRoster, year);
   } catch (err) {
     showDiagnostic(`Network fetch error: ${err.message}`);
-    populateCompetitionView(comp.meta, [], year);
+    populateCompetitionView(comp, [], year);
   }
 }
 
 function showDiagnostic(message) {
-  console.warn(message);
   let bar = document.getElementById("diagnosticBar");
   if (!bar) {
     bar = document.createElement("div");
@@ -288,15 +365,25 @@ function showDiagnostic(message) {
   bar.textContent = `[DIAGNOSTIC] ${message}`;
 }
 
+function clearDiagnostic() {
+  const bar = document.getElementById("diagnosticBar");
+  if (bar) bar.remove();
+}
+
 // =============================================================================
-// DOM Renderer
+// DOM Renderer (Dynamic Status Extraction)
 // =============================================================================
-function populateCompetitionView(meta, roster, year) {
-  const isRecap = parseInt(year) < 2026;
+function populateCompetitionView(comp, roster, year) {
+  const meta = comp.meta;
+  
+  // Date-aware: past competitions render as real official recaps; upcoming ones render as draws/projections
+  const targetDate = comp.date ? new Date(comp.date) : new Date("2026-10-31");
+  const currentDate = new Date("2026-09-20");
+  const isPastComp = parseInt(year) < 2026 || (parseInt(year) === 2026 && targetDate < currentDate);
 
   document.getElementById("contestTitle").textContent = `${meta.title} (${year})`;
   document.getElementById("contestSubtitle").textContent = meta.subtitle;
-  document.getElementById("contestTag").textContent = isRecap ? `${year} RECAP` : meta.tag;
+  document.getElementById("contestTag").textContent = isPastComp ? `${year} OFFICIAL RECAP` : `${year} UPCOMING DRAW / PREDICTIONS`;
   document.getElementById("bandCountBadge").textContent = `${roster.length} Programs`;
 
   const selectElem = document.getElementById("contestSelect");
@@ -305,22 +392,53 @@ function populateCompetitionView(meta, roster, year) {
     selectElem.value = `${event}|${activeYear}`;
   }
 
+  // Find FHC dynamically inside the ingested roster
+  const fhcEntry = roster.find(b => b.name.toLowerCase().includes("howell central"));
+  
   document.getElementById("fhcEventHeadline").textContent = meta.fhcHeadline;
-  document.getElementById("fhcEventSummary").textContent = meta.fhcSummary;
-  document.getElementById("fhcStatPeak").textContent = meta.fhcPeak;
-  document.getElementById("fhcStatPeakSub").textContent = meta.fhcPeakSub;
-  document.getElementById("fhcStatTarget").textContent = meta.fhcTarget;
-  document.getElementById("fhcStatTargetSub").textContent = meta.fhcTargetSub;
-  document.getElementById("fhcStatRank").textContent = meta.fhcRank;
-  document.getElementById("fhcStatCutoff").textContent = meta.fhcCutoff;
-  document.getElementById("fhcStatCutoffSub").textContent = meta.fhcCutoffSub;
+  
+  if (isPastComp) {
+    // Dynamically populated straight from the spreadsheet rows
+    if (fhcEntry && fhcEntry.base > 0) {
+      document.getElementById("fhcEventSummary").textContent = `Francis Howell Central recorded an official score of ${fhcEntry.base.toFixed(3)} in ${meta.title}.`;
+      document.getElementById("fhcStatPeak").textContent = fhcEntry.base.toFixed(3);
+      document.getElementById("fhcStatPeakSub").textContent = "Official Score";
+    } else {
+      document.getElementById("fhcEventSummary").textContent = `Francis Howell Central participated in this competition event.`;
+      document.getElementById("fhcStatPeak").textContent = "N/A";
+      document.getElementById("fhcStatPeakSub").textContent = "No Score Listed";
+    }
+    document.getElementById("fhcStatTarget").textContent = fhcEntry ? fhcEntry.flight : "Completed";
+    document.getElementById("fhcStatTargetSub").textContent = "Performance Flight";
+    
+    // Calculate FHC rank dynamically by sorting active scores
+    const sortedCheck = [...roster].sort((a, b) => b.base - a.base);
+    const fhcIndex = sortedCheck.findIndex(b => b.name.toLowerCase().includes("howell central"));
+    document.getElementById("fhcStatRank").textContent = fhcIndex !== -1 ? `#${fhcIndex + 1} Overall` : "Participated";
+    document.getElementById("fhcStatRankSub").textContent = "Official Standing";
 
-  document.getElementById("statLabel1").textContent = isRecap ? "Achieved Score" : "Historical Peak";
-  document.getElementById("statLabel2").textContent = isRecap ? "Class / Caption" : "Target Score";
-  document.getElementById("statLabel3").textContent = isRecap ? "Official Placement" : "Projected Place";
-  document.getElementById("statLabel4").textContent = isRecap ? "Champion Score" : "Finals Benchmark";
+    const topScore = sortedCheck.length > 0 ? sortedCheck[0].base.toFixed(3) : "0.000";
+    document.getElementById("fhcStatCutoff").textContent = topScore;
+    document.getElementById("fhcStatCutoffSub").textContent = sortedCheck.length > 0 ? sortedCheck[0].name : "Champion";
+  } else {
+    // For future competitions (ready to connect to Gemini API projections)
+    document.getElementById("fhcEventSummary").textContent = meta.fhcSummary;
+    document.getElementById("fhcStatPeak").textContent = meta.fhcPeak;
+    document.getElementById("fhcStatPeakSub").textContent = meta.fhcPeakSub;
+    document.getElementById("fhcStatTarget").textContent = meta.fhcTarget;
+    document.getElementById("fhcStatTargetSub").textContent = meta.fhcTargetSub || "Model Projection";
+    document.getElementById("fhcStatRank").textContent = meta.fhcRank;
+    document.getElementById("fhcStatRankSub").textContent = "Tier Standing";
+    document.getElementById("fhcStatCutoff").textContent = meta.fhcCutoff;
+    document.getElementById("fhcStatCutoffSub").textContent = meta.fhcCutoffSub;
+  }
 
-  // Roster Table
+  document.getElementById("statLabel1").textContent = isPastComp ? "Official Score" : "Historical Peak";
+  document.getElementById("statLabel2").textContent = isPastComp ? "Flight / Class" : "Target Score";
+  document.getElementById("statLabel3").textContent = isPastComp ? "Official Placement" : "Projected Place";
+  document.getElementById("statLabel4").textContent = isPastComp ? "Event Champion" : "Finals Benchmark";
+
+  // Roster Table (Prelim draw order)
   const rosterBody = document.getElementById("rosterTableBody");
   rosterBody.innerHTML = "";
   roster.forEach((band, idx) => {
@@ -339,7 +457,7 @@ function populateCompetitionView(meta, roster, year) {
     rosterBody.appendChild(tr);
   });
 
-  // Leaderboard Table
+  // Leaderboard Table (Sorted descending by score)
   const leaderboardBody = document.getElementById("leaderboardTableBody");
   leaderboardBody.innerHTML = "";
   const sorted = [...roster].sort((a, b) => b.base - a.base);
@@ -376,6 +494,7 @@ function populateCompetitionView(meta, roster, year) {
   lucide.createIcons();
 }
 
+// Bootstrap
 window.addEventListener("popstate", () => {
   const { event, year } = getUrlParams();
   fetchAndRenderCompetition(event, year);
