@@ -4,6 +4,10 @@
 
 const MASTER_INDEX_SPREADSHEET_ID = "106s_uuX5YOXAS_cXPCqj4HaO69DK8wHMWGevKUhTWd0";
 
+// How long cached sheet data stays valid. Sheets only update once a week,
+// so 24h is generous. Users can force a refresh via ?clearcache=1
+const SHEET_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
 let activeWorkbookData = {
   prelims: [],
   finals: [],
@@ -93,12 +97,36 @@ async function fetchMasterDirectory() {
   return entries;
 }
 
-// In-memory per-page-load cache
-const _sheetCache = new Map();
-async function fetchSheetGrid(sheetId, sheetName) {
-  const key = `${sheetId}::${sheetName || ""}`;
-  if (_sheetCache.has(key)) return _sheetCache.get(key);
+// =============================================================================
+// Sheet Fetcher — 3-tier cache (in-memory → localStorage → network)
+// =============================================================================
+const _sheetCache = new Map();   // layer 4: per-page-load
 
+async function fetchSheetGrid(sheetId, sheetName) {
+  const memKey = `${sheetId}::${sheetName || ""}`;
+
+  // --- Layer 4: in-memory ---
+  if (_sheetCache.has(memKey)) return _sheetCache.get(memKey);
+
+  // --- Layer 3: localStorage ---
+  const lsKey = `sheet_${memKey}`;
+  try {
+    const raw = localStorage.getItem(lsKey);
+    if (raw) {
+      const { value, expires } = JSON.parse(raw);
+      if (Date.now() < expires) {
+        _sheetCache.set(memKey, value);
+        console.log(`[sheet-cache] HIT  ${sheetName || sheetId}`);
+        return value;
+      }
+      localStorage.removeItem(lsKey);
+    }
+  } catch (e) {
+    console.warn("[sheet-cache] localStorage read failed:", e);
+  }
+
+  // --- Network ---
+  console.log(`[sheet-cache] MISS ${sheetName || sheetId}`);
   const params = sheetName ? `&sheet=${encodeURIComponent(sheetName)}` : "";
   const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv${params}&_cb=${Date.now()}`;
   const res = await fetch(url);
@@ -107,8 +135,37 @@ async function fetchSheetGrid(sheetId, sheetName) {
   const rows = parsed.data.map(r =>
     (r || []).map(c => (c || "").toString().trim().replace(/\u00a0/g, " "))
   );
-  _sheetCache.set(key, rows);
+
+  _sheetCache.set(memKey, rows);
+
+  // Persist to localStorage. If we hit a quota error, prune old sheet entries
+  // and try once more.
+  const payload = JSON.stringify({ value: rows, expires: Date.now() + SHEET_CACHE_TTL_MS });
+  try {
+    localStorage.setItem(lsKey, payload);
+  } catch (e) {
+    console.warn("[sheet-cache] localStorage write failed, pruning old entries...");
+    Object.keys(localStorage)
+      .filter(k => k.startsWith("sheet_"))
+      .forEach(k => localStorage.removeItem(k));
+    try {
+      localStorage.setItem(lsKey, payload);
+    } catch (e2) {
+      console.warn("[sheet-cache] still failed — persistence disabled for this sheet");
+    }
+  }
+
   return rows;
+}
+
+function clearAllCaches() {
+  const removed = { sheets: 0, ai: 0 };
+  Object.keys(localStorage).forEach(k => {
+    if (k.startsWith("sheet_")) { localStorage.removeItem(k); removed.sheets++; }
+    else if (k.startsWith("ai_")) { localStorage.removeItem(k); removed.ai++; }
+  });
+  _sheetCache.clear();
+  console.log(`[cache] Cleared ${removed.sheets} sheet entries, ${removed.ai} AI entries`);
 }
 
 function parseFullWorkbookCSV(rows) {
@@ -281,8 +338,14 @@ async function loadCompetitionView(eventKey, selectedYear, selectedRound) {
   const rosterBody = document.getElementById("rosterTableBody");
   const leaderboardBody = document.getElementById("leaderboardTableBody");
 
+  // Optional ?clearcache=1 to force fresh sheet fetches
+  if (new URLSearchParams(window.location.search).has("clearcache")) {
+    clearAllCaches();
+  }
+
   activeFieldProjections = null;
-  _sheetCache.clear();
+  // NOTE: we deliberately do NOT clear _sheetCache anymore — it survives
+  // navigation within a page session so overlapping sheets aren't refetched.
 
   let allEntries;
   try {
@@ -360,8 +423,6 @@ async function loadCompetitionView(eventKey, selectedYear, selectedRound) {
   if (targetEntry.isPast) {
     enrichFHCSpotlightPast(targetEntry, selectedYear, selectedRound, contestSeasons, allEntries);
   } else {
-    // Field projections run first; they populate the tiles and then trigger
-    // the outlook text generation, which uses the projection as context.
     enrichProjectedStandings(targetEntry, allEntries, selectedRound, contestSeasons);
   }
 }
@@ -594,10 +655,8 @@ function applyFieldProjections(result, roster, comp, selectedRound, contestSeaso
 
   renderLeaderboard(roster, false);
 
-  // Populate the spotlight tiles from the field projection
   populateUpcomingSpotlightTiles(comp, selectedRound);
 
-  // Now that tiles are populated, generate the outlook text
   if (comp && contestSeasons && allEntries) {
     enrichFHCSpotlightUpcoming(comp, contestSeasons, allEntries).catch(err => {
       console.warn("[enrichFHCSpotlightUpcoming]", err);
@@ -622,19 +681,16 @@ function populateUpcomingSpotlightTiles(comp, currentRound) {
   const proj = fhc.projection;
   if (!proj) return;
 
-  // Tile 1: Projected Score
   document.getElementById("statLabel1").textContent = "Projected Score";
   const peakEl = document.getElementById("fhcStatPeak");
   peakEl.textContent = proj.projectedScore.toFixed(2);
   peakEl.className = "stat-value text-violet-300 font-mono";
   document.getElementById("fhcStatPeakSub").textContent = "AI Projection";
 
-  // Tile 2: Projected Standing
   document.getElementById("statLabel2").textContent = "Projected Standing";
   document.getElementById("fhcStatRank").textContent = `#${proj.projectedRank}`;
   document.getElementById("fhcStatRankSub").textContent = `${proj.confidence} confidence`;
 
-  // Tile 3: Finals Chance
   const finalsCard = document.getElementById("finalsBenchmarkCard");
   const hasFinals = activeFieldProjections && activeFieldProjections.finalsSize > 0;
   const showFinalsTile = hasFinals && (!showRoundToggle() || currentRound === "prelims");
@@ -676,7 +732,6 @@ async function enrichFHCSpotlightUpcoming(comp, contestSeasons, allEntries) {
   const proj = fhc?.projection;
   if (!proj) return;
 
-  // Cache key: no round, since prelims and finals show the same outlook
   const cacheKey = hashData({
     kind: "outlook",
     comp: comp.key,
@@ -820,7 +875,6 @@ function renderUI(comp, year, currentRound, tabName) {
         finalsCard.classList.add("hidden");
       }
     } else {
-      // Upcoming placeholder — will be replaced by populateUpcomingSpotlightTiles
       document.getElementById("statLabel1").textContent = "Projected Score";
       document.getElementById("statLabel2").textContent = "Projected Standing";
       document.getElementById("statLabel3").textContent = "Finals Chance";
