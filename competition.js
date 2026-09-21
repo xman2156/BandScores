@@ -1,5 +1,5 @@
 // =============================================================================
-// Live Master Directory Connection & Universal Adaptive Recap Engine
+// Live Master Directory Connection & Rock-Solid Universal Parser
 // =============================================================================
 
 const MASTER_INDEX_SPREADSHEET_ID = "106s_uuX5YOXAS_cXPCqj4HaO69DK8wHMWGevKUhTWd0";
@@ -94,14 +94,14 @@ async function fetchMasterDirectory() {
       if (liveEntries.length > 0) return liveEntries;
     }
   } catch (err) {
-    console.warn("Could not reach Master Directory, utilizing local catalog:", err);
+    console.warn("Using fallback catalog:", err);
   }
 
   return fallbackDirectory;
 }
 
 // =============================================================================
-// Adaptive CSV Parser (Zero Reset Bugs, Full BOA + MEMC + Lafayette Support)
+// Adaptive CSV Parser (Exact Token Matching for Classes)
 // =============================================================================
 function parseFullWorkbookCSV(rawCsvText) {
   const parsed = Papa.parse(rawCsvText, { skipEmptyLines: false });
@@ -118,7 +118,8 @@ function parseFullWorkbookCSV(rawCsvText) {
     "music performance", "visual performance", "general effect", "judge panel",
     "individual", "ensemble", "total", "order", "school name", "field & timing",
     "prelims", "finals", "1st place", "2nd place", "3rd place", "overall rank", 
-    "class rank", "rating", "score", "sub total", "music", "visual", "panel"
+    "class rank", "rating", "score", "sub total", "music", "visual", "panel",
+    "oustanding music", "outstanding visual", "outstanding general effect"
   ];
 
   for (let i = 0; i < rows.length; i++) {
@@ -127,7 +128,7 @@ function parseFullWorkbookCSV(rawCsvText) {
 
     if (row.every(c => c === "")) continue;
 
-    // 1. Prelims vs Finals round switches
+    // 1. Prelims vs Finals round detection
     if (line.includes("finals") && !line.includes("field & timing")) {
       currentBlock = "Finals";
       activeSectionClass = "";
@@ -140,41 +141,36 @@ function parseFullWorkbookCSV(rawCsvText) {
       continue;
     }
 
-    // 2. Identify Section Banners (MEMC, Lafayette, Tiger Ambush)
-    const rawFirstCell = (row[0] || "").trim().toLowerCase();
+    // 2. Identify Section Banners (Exact tokens so 'Class A' never matches 'Class AA')
+    // Check cell 0 first, then entire row if <= 3 cells are populated
+    const firstCell = (row[0] || "").trim();
+    const rowTokens = row.filter(Boolean);
 
-    if (rawFirstCell.startsWith("class aaaa") || rawFirstCell === "class 4a") {
-      activeSectionClass = "Class AAAA";
-      continue;
-    } else if (rawFirstCell.startsWith("class aaa") || rawFirstCell === "class 3a") {
-      activeSectionClass = "Class AAA";
-      continue;
-    } else if (rawFirstCell.startsWith("class aa") || rawFirstCell === "class 2a") {
-      activeSectionClass = "Class AA";
-      continue;
-    } else if (rawFirstCell.startsWith("class a") || rawFirstCell === "class 1a") {
-      activeSectionClass = "Class A";
-      continue;
-    } else if (rawFirstCell === "gold" || rawFirstCell === "gold division") {
-      activeSectionClass = "Gold Division";
-      continue;
-    } else if (rawFirstCell === "black" || rawFirstCell === "black division") {
-      activeSectionClass = "Black Division";
-      continue;
-    } else if (rawFirstCell === "white" || rawFirstCell === "white division") {
-      activeSectionClass = "White Division";
+    let detectedBanner = "";
+    const testString = (rowTokens.length <= 3 ? row.join(" ") : firstCell).trim();
+
+    if (/^class\s*(aaaa|4a)$/i.test(testString) || /\bclass\s*(aaaa|4a)\b/i.test(testString)) {
+      detectedBanner = "Class AAAA";
+    } else if (/^class\s*(aaa|3a)$/i.test(testString) || /\bclass\s*(aaa|3a)\b/i.test(testString)) {
+      detectedBanner = "Class AAA";
+    } else if (/^class\s*(aa|2a)$/i.test(testString) || /\bclass\s*(aa|2a)\b/i.test(testString)) {
+      detectedBanner = "Class AA";
+    } else if (/^class\s*(a|1a)$/i.test(testString) || /\bclass\s*(a|1a)\b/i.test(testString)) {
+      detectedBanner = "Class A";
+    } else if (/^gold(\s+division)?$/i.test(testString) || /\bgold\s+division\b/i.test(testString)) {
+      detectedBanner = "Gold Division";
+    } else if (/^black(\s+division)?$/i.test(testString) || /\bblack\s+division\b/i.test(testString)) {
+      detectedBanner = "Black Division";
+    } else if (/^white(\s+division)?$/i.test(testString) || /\bwhite\s+division\b/i.test(testString)) {
+      detectedBanner = "White Division";
+    }
+
+    if (detectedBanner) {
+      activeSectionClass = detectedBanner;
       continue;
     }
 
-    // Secondary banner check if row only has 1 or 2 filled cells
-    if (row.filter(Boolean).length <= 2) {
-      if (/\bclass\s*aaaa\b/i.test(line)) { activeSectionClass = "Class AAAA"; continue; }
-      if (/\bclass\s*aaa\b/i.test(line)) { activeSectionClass = "Class AAA"; continue; }
-      if (/\bclass\s*aa\b/i.test(line)) { activeSectionClass = "Class AA"; continue; }
-      if (/\bclass\s*a\b/i.test(line)) { activeSectionClass = "Class A"; continue; }
-    }
-
-    // 3. BOA Inline Column Detection (Direct check for "Class" in the header row)
+    // 3. BOA Inline Column Detection (Finds exact "Class" column index)
     const lowerRow = row.map(c => c.toLowerCase());
     const cIdx = lowerRow.indexOf("class");
     if (cIdx !== -1) {
@@ -182,12 +178,12 @@ function parseFullWorkbookCSV(rawCsvText) {
       continue;
     }
 
-    // Skip caption headers, judge panels, subheadings
+    // Skip caption headers, judge names, rating rows
     if (line.includes("judge panel") || line.includes("individual") || line.includes("ensemble")) {
       continue;
     }
 
-    // 4. Extract Total Score (Right to Left scan for numbers 35-100)
+    // 4. Extract Total Score (Scanning right to left for 35.0 - 100.0)
     let scoreVal = 0.0;
     for (let c = row.length - 1; c >= 0; c--) {
       const val = parseFloat(row[c]);
@@ -197,7 +193,7 @@ function parseFullWorkbookCSV(rawCsvText) {
       }
     }
 
-    // 5. Identify Candidate School Name
+    // 5. Extract Candidate School Name (Checks first 3 columns)
     let candidateName = "";
     for (let c = 0; c < Math.min(row.length, 3); c++) {
       const cell = row[c];
@@ -220,7 +216,7 @@ function parseFullWorkbookCSV(rawCsvText) {
 
     if (!candidateName) continue;
 
-    // 6. Assign Classification (Inline Column > Section Banner)
+    // 6. Assign Classification (Inline column takes precedence; fallback to active section banner)
     let finalClass = "";
     if (classColIdx !== -1 && row[classColIdx] && row[classColIdx].length > 0) {
       const val = row[classColIdx].trim();
@@ -346,7 +342,26 @@ async function loadCompetitionView(eventKey, selectedYear, selectedRound) {
 // DOM Renderer
 // =============================================================================
 function renderUI(comp, year, currentRound, tabName) {
-  const isPast = parseInt(year, 10) < new Date().getFullYear();
+  // Safe date check: past year or past calendar date
+  let isPast = parseInt(year, 10) < new Date().getFullYear();
+  if (comp.date) {
+    const parts = comp.date.trim().split(/[-/]/);
+    if (parts.length === 3) {
+      let y, m, d;
+      if (parts[0].length === 4) {
+        y = parseInt(parts[0], 10);
+        m = parseInt(parts[1], 10) - 1;
+        d = parseInt(parts[2], 10);
+      } else {
+        m = parseInt(parts[0], 10) - 1;
+        d = parseInt(parts[1], 10);
+        y = parseInt(parts[2], 10);
+        if (y < 100) y += 2000;
+      }
+      const eventDate = new Date(y, m, d, 23, 59, 59);
+      isPast = isPast || eventDate < new Date();
+    }
+  }
 
   // Round Toggle
   const roundContainer = document.getElementById("roundToggleContainer");
