@@ -10,6 +10,8 @@ let activeWorkbookData = {
   hasFinalsInSheet: false
 };
 
+let activeFieldProjections = null;
+
 const CAPTION_LAYOUTS = {
   16: { musicInd: 1, musicEns: 2, musicTotal: 3, visualInd: 4, visualEns: 5, visualTotal: 6, geMusic: 7, geVisual: 8, geTotal: 9, fieldTiming: 10, grandTotal: 11 },
   12: { musicInd: 2, musicEns: 3, musicTotal: 4, visualInd: 5, visualEns: 6, visualTotal: 7, geMusic: 8, geVisual: 9, geTotal: 10, grandTotal: 11 },
@@ -91,15 +93,22 @@ async function fetchMasterDirectory() {
   return entries;
 }
 
+// In-memory per-page-load cache
+const _sheetCache = new Map();
 async function fetchSheetGrid(sheetId, sheetName) {
+  const key = `${sheetId}::${sheetName || ""}`;
+  if (_sheetCache.has(key)) return _sheetCache.get(key);
+
   const params = sheetName ? `&sheet=${encodeURIComponent(sheetName)}` : "";
   const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv${params}&_cb=${Date.now()}`;
   const res = await fetch(url);
   const csv = await res.text();
   const parsed = Papa.parse(csv, { skipEmptyLines: false });
-  return parsed.data.map(r =>
+  const rows = parsed.data.map(r =>
     (r || []).map(c => (c || "").toString().trim().replace(/\u00a0/g, " "))
   );
+  _sheetCache.set(key, rows);
+  return rows;
 }
 
 function parseFullWorkbookCSV(rows) {
@@ -272,6 +281,9 @@ async function loadCompetitionView(eventKey, selectedYear, selectedRound) {
   const rosterBody = document.getElementById("rosterTableBody");
   const leaderboardBody = document.getElementById("leaderboardTableBody");
 
+  activeFieldProjections = null;
+  _sheetCache.clear();
+
   let allEntries;
   try {
     allEntries = await fetchMasterDirectory();
@@ -345,12 +357,14 @@ async function loadCompetitionView(eventKey, selectedYear, selectedRound) {
 
   renderUI(targetEntry, selectedYear, selectedRound, targetTab);
 
-  // Kick off AI enrichment for the FHC spotlight (async, non-blocking)
   enrichFHCSpotlight(targetEntry, selectedYear, selectedRound, contestSeasons, allEntries);
+  if (!targetEntry.isPast) {
+    enrichProjectedStandings(targetEntry, allEntries);
+  }
 }
 
 // =============================================================================
-// AI Enrichment
+// AI Enrichment — FHC Spotlight
 // =============================================================================
 async function enrichFHCSpotlight(comp, year, currentRound, contestSeasons, allEntries) {
   const spotlight = document.getElementById("fhcSpotlightSection");
@@ -365,33 +379,22 @@ async function enrichFHCSpotlight(comp, year, currentRound, contestSeasons, allE
     : activeWorkbookData.prelims;
 
   const fhc = activeRoster.find(b => b.name.toLowerCase().includes("howell central"));
-
-  // Past contest with no FHC in the roster → nothing to analyze
   if (isPast && !fhc) return;
-  // Upcoming contest with empty roster → nothing to project against
   if (!isPast && activeRoster.length === 0) return;
 
-  // Cache key based on the specific inputs for this analysis
   const cacheKey = hashData({
     kind: isPast ? "summary" : "outlook",
-    comp: comp.key,
-    year,
-    round: currentRound,
+    comp: comp.key, year, round: currentRound,
     fhc: fhc ? { name: fhc.name, base: fhc.base, captions: fhc.captions } : null,
     rosterSize: activeRoster.length
   });
 
   const cached = getCache(cacheKey);
-  if (cached) {
-    applyAIResult(cached, isPast, headlineEl, summaryEl, extrasEl);
-    return;
-  }
+  if (cached) { applyAIResult(cached, isPast, headlineEl, summaryEl, extrasEl); return; }
 
-  // Show loading state
   showAILoading(summaryEl, isPast);
   extrasEl.classList.add("hidden");
 
-  // Gather context: prior same-contest scores + current season scores
   const priorSameContest = await gatherPriorSameContestScores(comp, contestSeasons, allEntries);
   const currentSeason = isPast ? await gatherCurrentSeasonScores(comp, allEntries) : [];
 
@@ -411,7 +414,6 @@ async function enrichFHCSpotlight(comp, year, currentRound, contestSeasons, allE
 }
 
 async function gatherPriorSameContestScores(comp, contestSeasons, allEntries) {
-  // Find prior years' entries for this same contest key (excluding the current year)
   const priors = contestSeasons.filter(c => c.year !== comp.year && parseInt(c.year, 10) < parseInt(comp.year, 10));
   const out = [];
   for (const p of priors) {
@@ -428,7 +430,6 @@ async function gatherPriorSameContestScores(comp, contestSeasons, allEntries) {
 }
 
 async function gatherCurrentSeasonScores(comp, allEntries) {
-  // Most recent completed contests FHC has competed at this season (for context on trajectory)
   const now = new Date();
   const sameYear = allEntries
     .filter(e => e.year === comp.year && e.key !== comp.key)
@@ -443,9 +444,7 @@ async function gatherCurrentSeasonScores(comp, allEntries) {
       const rows = await fetchSheetGrid(e.id, e.prelimsTab);
       const parsed = parseFullWorkbookCSV(rows);
       const fhc = parsed.prelims.find(b => b.name.toLowerCase().includes("howell central"));
-      if (fhc && fhc.base > 0) {
-        out.push({ contest: e.name, date: e.date, score: fhc.base });
-      }
+      if (fhc && fhc.base > 0) out.push({ contest: e.name, date: e.date, score: fhc.base });
     } catch (err) {
       console.warn(`[gatherCurrentSeasonScores] Skipping ${e.name}:`, err);
     }
@@ -499,7 +498,6 @@ function applyAIResult(result, isPast, headlineEl, summaryEl, extrasEl) {
     headlineEl.textContent = "Contest Outlook";
     summaryEl.textContent = result.reasoning || "";
 
-    // Populate the two stat cards with AI projection
     const peakEl = document.getElementById("fhcStatPeak");
     const peakSubEl = document.getElementById("fhcStatPeakSub");
     const rankEl = document.getElementById("fhcStatRank");
@@ -528,6 +526,158 @@ function applyAIResult(result, isPast, headlineEl, summaryEl, extrasEl) {
   }
 }
 
+// =============================================================================
+// AI Enrichment — Field-Wide Projected Standings
+// =============================================================================
+async function enrichProjectedStandings(comp, allEntries) {
+  const roster = activeWorkbookData.prelims;
+  if (roster.length === 0) return;
+
+  const cacheKey = hashData({
+    kind: "field-projection",
+    comp: comp.key,
+    year: comp.year,
+    roster: roster.map(b => b.name).sort()
+  });
+
+  const cached = getCache(cacheKey);
+  if (cached) {
+    applyFieldProjections(cached, roster);
+    return;
+  }
+
+  showProjectionLoading();
+
+  // KV cache key: scoped to contest + ISO week, so it auto-refreshes every Monday
+  const weekNum = Math.floor(Date.now() / (7 * 24 * 3600 * 1000));
+  const kvCacheKey = `proj-${comp.key}-${comp.year}-w${weekNum}`;
+
+  try {
+    const history = await gatherFieldHistory(comp, allEntries, roster);
+    const result = await generateFieldProjections(comp, roster, history, kvCacheKey);
+    setCache(cacheKey, result, 24);
+    applyFieldProjections(result, roster);
+  } catch (err) {
+    console.error("[enrichProjectedStandings]", err);
+    clearProjectionLoading();
+  }
+}
+
+async function gatherFieldHistory(comp, allEntries, roster) {
+  const now = new Date();
+
+  // Every completed contest in the directory, except the current one
+  const sources = allEntries
+    .filter(e => !(e.key === comp.key && e.year === comp.year))
+    .map(e => ({ ...e, dateObj: parseLocalDate(e.date, e.year) }))
+    .filter(e => e.dateObj < now);
+
+  console.log(`[gatherFieldHistory] Fetching ${sources.length} sheets (8 at a time)...`);
+
+  // Fetch with limited concurrency to avoid hammering Google
+  const CONCURRENCY = 8;
+  const results = [];
+  for (let i = 0; i < sources.length; i += CONCURRENCY) {
+    const batch = sources.slice(i, i + CONCURRENCY);
+    const batchResults = await Promise.all(batch.map(async (src) => {
+      try {
+        const rows = await fetchSheetGrid(src.id, src.prelimsTab);
+        const parsed = parseFullWorkbookCSV(rows);
+        return { entry: src, roster: parsed.prelims };
+      } catch (err) {
+        console.warn(`[gatherFieldHistory] Skipping ${src.year} ${src.name}:`, err);
+        return { entry: src, roster: [] };
+      }
+    }));
+    results.push(...batchResults);
+  }
+
+  // Group by band name (fuzzy-matched against current roster)
+  const history = {};
+  roster.forEach(b => history[b.name] = []);
+
+  for (const r of results) {
+    for (const band of r.roster) {
+      const match = roster.find(rb => bandNameMatches(rb.name, band.name));
+      if (match && band.base > 0) {
+        history[match.name].push({
+          contest: r.entry.name,
+          year: r.entry.year,
+          date: r.entry.date,
+          score: band.base
+        });
+      }
+    }
+  }
+
+  // Sort chronologically within each band
+  Object.values(history).forEach(arr =>
+    arr.sort((a, b) => parseLocalDate(a.date, a.year) - parseLocalDate(b.date, b.year))
+  );
+
+  const totalRows = Object.values(history).reduce((sum, arr) => sum + arr.length, 0);
+  console.log(`[gatherFieldHistory] ${sources.length} sheets → ${totalRows} band-score rows across ${roster.length} bands`);
+
+  return history;
+}
+
+function getOrCreateOverviewEl() {
+  let el = document.getElementById("leaderboardOverview");
+  if (el) return el;
+  const title = document.getElementById("leaderboardTitle");
+  if (!title) return null;
+  el = document.createElement("div");
+  el.id = "leaderboardOverview";
+  el.className = "hidden mb-3 p-3 bg-violet-950/20 border border-violet-500/20 rounded-xl text-xs text-violet-200 leading-relaxed";
+  title.parentElement.insertAdjacentElement("afterend", el);
+  return el;
+}
+
+function showProjectionLoading() {
+  const body = document.getElementById("leaderboardTableBody");
+  const titleEl = document.getElementById("leaderboardTitle");
+  const badgeEl = document.getElementById("leaderboardBadge");
+  if (!body) return;
+  titleEl.innerHTML = `<i data-lucide="sparkles" class="w-4 h-4 text-violet-400"></i> Projected Standings`;
+  badgeEl.textContent = "AI Projection";
+  badgeEl.className = "inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-violet-500/10 text-violet-300 border border-violet-500/20 font-mono";
+  body.innerHTML = `
+    <tr><td colspan="4" class="py-8 text-center text-slate-400 text-xs font-mono">
+      <span class="inline-flex items-center gap-2">
+        <span class="w-3 h-3 rounded-full border-2 border-violet-400 border-t-transparent animate-spin"></span>
+        Analyzing field history and generating projections...
+      </span>
+    </td></tr>
+  `;
+  lucide.createIcons();
+}
+
+function clearProjectionLoading() {
+  renderLeaderboard(activeWorkbookData.prelims, false);
+}
+
+function applyFieldProjections(result, roster) {
+  if (!result || !Array.isArray(result.projections)) return;
+
+  result.projections.forEach(p => {
+    const band = roster.find(b => bandNameMatches(b.name, p.name));
+    if (band) band.projection = p;
+  });
+
+  activeFieldProjections = result;
+
+  const overviewEl = getOrCreateOverviewEl();
+  if (overviewEl && result.overview) {
+    overviewEl.textContent = result.overview;
+    overviewEl.classList.remove("hidden");
+  }
+
+  renderLeaderboard(roster, false);
+}
+
+// =============================================================================
+// DOM Renderer
+// =============================================================================
 function renderUI(comp, year, currentRound, tabName) {
   const isPast = comp.isPast === true;
 
@@ -600,7 +750,6 @@ function renderUI(comp, year, currentRound, tabName) {
         finalsCard.classList.add("hidden");
       }
     } else {
-      // Upcoming — placeholders until AI fills in
       document.getElementById("statLabel1").textContent = "Historical Mark";
       document.getElementById("statLabel2").textContent = "Projected Standing";
       document.getElementById("fhcStatPeak").textContent = "Pending";
@@ -641,31 +790,97 @@ function renderUI(comp, year, currentRound, tabName) {
     rosterBody.appendChild(tr);
   });
 
+  renderLeaderboard(activeRoster, isPast);
+
+  lucide.createIcons();
+}
+
+function renderLeaderboard(activeRoster, isPast) {
   const leaderboardBody = document.getElementById("leaderboardTableBody");
+  const titleEl = document.getElementById("leaderboardTitle");
+  const badgeEl = document.getElementById("leaderboardBadge");
+  const colScoreEl = document.getElementById("colScore");
+  const colStatusEl = document.getElementById("colStatus");
+  const overviewEl = getOrCreateOverviewEl();
+  if (!leaderboardBody) return;
+
+  const showingProjection = !isPast && activeFieldProjections && activeFieldProjections.projections?.length > 0;
+
+  if (showingProjection) {
+    titleEl.innerHTML = `<i data-lucide="sparkles" class="w-4 h-4 text-violet-400"></i> Projected Standings`;
+    badgeEl.textContent = "AI Projection";
+    badgeEl.className = "inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-violet-500/10 text-violet-300 border border-violet-500/20 font-mono";
+    colScoreEl.textContent = "Proj. Score";
+    colStatusEl.textContent = "Confidence";
+  } else {
+    titleEl.innerHTML = `<i data-lucide="award" class="w-4 h-4 text-emerald-400"></i> Results & Standings`;
+    badgeEl.textContent = isPast ? "Official Results" : "Awaiting Results";
+    badgeEl.className = "badge-emerald";
+    colScoreEl.textContent = "Total Score";
+    colStatusEl.textContent = "Class / Round";
+    if (overviewEl) overviewEl.classList.add("hidden");
+  }
+
   leaderboardBody.innerHTML = "";
-  const sorted = [...activeRoster].sort((a, b) => b.base - a.base);
-  sorted.forEach((band, idx) => {
-    const isFHC = band.name.toLowerCase().includes("howell central");
-    const hasScore = band.base > 0;
-    const tr = document.createElement("tr");
-    tr.className = isFHC
-      ? "bg-blue-950/40 border-l-2 border-blue-400 cursor-pointer hover:bg-blue-950/60 transition"
-      : "hover:bg-slate-900/50 transition cursor-pointer";
-    tr.innerHTML = `
-      <td class="py-2.5 px-3 font-mono font-bold ${idx < 3 ? 'text-amber-400' : 'text-slate-400'}">#${idx + 1}</td>
-      <td class="py-2.5 px-3 ${isFHC ? 'text-blue-300 font-bold' : 'text-white'}">
-        ${band.name} <span class="text-[10px] text-slate-500 font-mono font-normal">(${band.state})</span>
-      </td>
-      <td class="py-2.5 px-3 text-right font-mono font-bold ${hasScore ? 'text-emerald-400' : 'text-slate-500 italic'}">
-        ${fmtScore(band.base)}
-      </td>
-      <td class="py-2.5 px-3 text-right">
-        ${band.classification ? `<span class="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono">${band.classification}</span>` : `<span class="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono">—</span>`}
-      </td>
-    `;
-    tr.onclick = () => openBandModal(band, activeRoster);
-    leaderboardBody.appendChild(tr);
-  });
+
+  if (showingProjection) {
+    const sorted = [...activeFieldProjections.projections].sort((a, b) => b.projectedScore - a.projectedScore);
+    sorted.forEach((p, idx) => {
+      const rosterBand = activeRoster.find(b => bandNameMatches(b.name, p.name));
+      const isFHC = p.name.toLowerCase().includes("howell central");
+      const confColor = p.confidence === "high" ? "text-emerald-400" : p.confidence === "low" ? "text-amber-400" : "text-indigo-400";
+
+      const tr = document.createElement("tr");
+      tr.className = isFHC
+        ? "bg-blue-950/40 border-l-2 border-blue-400 cursor-pointer hover:bg-blue-950/60 transition"
+        : "hover:bg-slate-900/50 transition cursor-pointer";
+      tr.innerHTML = `
+        <td class="py-2.5 px-3 font-mono font-bold ${idx < 3 ? 'text-amber-400' : 'text-slate-400'}">#${p.projectedRank}</td>
+        <td class="py-2.5 px-3 ${isFHC ? 'text-blue-300 font-bold' : 'text-white'}">
+          ${p.name}
+          ${rosterBand && rosterBand.classification ? `<span class="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded font-mono ml-1">${rosterBand.classification}</span>` : ''}
+        </td>
+        <td class="py-2.5 px-3 text-right font-mono font-bold text-violet-300 italic">
+          ${p.projectedScore.toFixed(2)}
+        </td>
+        <td class="py-2.5 px-3 text-right">
+          <span class="text-[10px] font-mono uppercase tracking-wider ${confColor}">${p.confidence}</span>
+        </td>
+      `;
+      tr.onclick = () => openBandModal(
+        rosterBand || { name: p.name, base: 0, captions: {} },
+        activeRoster
+      );
+      leaderboardBody.appendChild(tr);
+    });
+  } else {
+    const sorted = [...activeRoster].sort((a, b) => b.base - a.base);
+    const emptyScoreLabel = isPast ? "—" : "Pending";
+    const fmtScore = (val) => val > 0 ? val.toFixed(3) : emptyScoreLabel;
+
+    sorted.forEach((band, idx) => {
+      const isFHC = band.name.toLowerCase().includes("howell central");
+      const hasScore = band.base > 0;
+      const tr = document.createElement("tr");
+      tr.className = isFHC
+        ? "bg-blue-950/40 border-l-2 border-blue-400 cursor-pointer hover:bg-blue-950/60 transition"
+        : "hover:bg-slate-900/50 transition cursor-pointer";
+      tr.innerHTML = `
+        <td class="py-2.5 px-3 font-mono font-bold ${idx < 3 ? 'text-amber-400' : 'text-slate-400'}">#${idx + 1}</td>
+        <td class="py-2.5 px-3 ${isFHC ? 'text-blue-300 font-bold' : 'text-white'}">
+          ${band.name} <span class="text-[10px] text-slate-500 font-mono font-normal">(${band.state})</span>
+        </td>
+        <td class="py-2.5 px-3 text-right font-mono font-bold ${hasScore ? 'text-emerald-400' : 'text-slate-500 italic'}">
+          ${fmtScore(band.base)}
+        </td>
+        <td class="py-2.5 px-3 text-right">
+          ${band.classification ? `<span class="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono">${band.classification}</span>` : `<span class="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono">—</span>`}
+        </td>
+      `;
+      tr.onclick = () => openBandModal(band, activeRoster);
+      leaderboardBody.appendChild(tr);
+    });
+  }
 
   lucide.createIcons();
 }
@@ -686,7 +901,12 @@ function openBandModal(band, allBands) {
   const rank = sorted.findIndex(b => b.name === band.name) + 1;
 
   nameEl.textContent = band.name;
-  metaEl.textContent = `${band.classification || "Unclassified"} • Rank #${rank} of ${allBands.length} • ${band.round}`;
+  const proj = band.projection;
+  if (proj) {
+    metaEl.textContent = `${band.classification || "Unclassified"} • Projected #${proj.projectedRank} • ${band.round || "Prelims"}`;
+  } else {
+    metaEl.textContent = `${band.classification || "Unclassified"} • Rank #${rank} of ${allBands.length} • ${band.round || "Prelims"}`;
+  }
 
   const c = band.captions || {};
   const hasCaptions = Object.keys(c).length > 0;
@@ -694,15 +914,33 @@ function openBandModal(band, allBands) {
   let html = `
     <div class="grid grid-cols-2 gap-3">
       <div class="p-3 bg-slate-950/60 border border-slate-800 rounded-xl">
-        <div class="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Total Score</div>
-        <div class="text-2xl font-black text-emerald-400 font-mono mt-1">${band.base > 0 ? band.base.toFixed(3) : "—"}</div>
+        <div class="text-[10px] uppercase tracking-wider text-slate-500 font-bold">${proj ? "Projected Score" : "Total Score"}</div>
+        <div class="text-2xl font-black ${proj ? 'text-violet-300 italic' : 'text-emerald-400'} font-mono mt-1">
+          ${proj ? proj.projectedScore.toFixed(2) : (band.base > 0 ? band.base.toFixed(3) : "—")}
+        </div>
       </div>
       <div class="p-3 bg-slate-950/60 border border-slate-800 rounded-xl">
-        <div class="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Placement</div>
-        <div class="text-2xl font-black text-indigo-400 font-mono mt-1">#${rank}</div>
+        <div class="text-[10px] uppercase tracking-wider text-slate-500 font-bold">${proj ? "Projected Rank" : "Placement"}</div>
+        <div class="text-2xl font-black ${proj ? 'text-violet-400' : 'text-indigo-400'} font-mono mt-1">
+          #${proj ? proj.projectedRank : rank}
+        </div>
       </div>
     </div>
   `;
+
+  if (proj && proj.note) {
+    html += `
+      <div class="border border-violet-500/30 bg-violet-950/20 rounded-xl overflow-hidden">
+        <div class="px-4 py-2 bg-violet-500/10 border-b border-violet-500/20 flex items-center gap-2">
+          <i data-lucide="sparkles" class="w-3.5 h-3.5 text-violet-300"></i>
+          <span class="text-xs font-bold text-violet-300 uppercase tracking-wider">AI Projection — ${proj.confidence} confidence</span>
+        </div>
+        <div class="px-4 py-3 text-xs text-violet-100 leading-relaxed">
+          ${proj.note}
+        </div>
+      </div>
+    `;
+  }
 
   if (!hasCaptions) {
     html += `
@@ -766,14 +1004,16 @@ function openBandModal(band, allBands) {
     }
   }
 
-  html += `
-    <div class="border border-dashed border-slate-700 rounded-xl p-5 text-center">
-      <div class="inline-flex items-center gap-2 text-slate-500 text-xs font-mono">
-        <i data-lucide="sparkles" class="w-4 h-4"></i>
-        AI Review & Projection — Coming Soon (Chunk B)
+  if (!proj) {
+    html += `
+      <div class="border border-dashed border-slate-700 rounded-xl p-5 text-center">
+        <div class="inline-flex items-center gap-2 text-slate-500 text-xs font-mono">
+          <i data-lucide="sparkles" class="w-4 h-4"></i>
+          AI Review — Coming Soon
+        </div>
       </div>
-    </div>
-  `;
+    `;
+  }
 
   bodyEl.innerHTML = html;
   modal.classList.remove("hidden");

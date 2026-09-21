@@ -36,16 +36,30 @@ function setCache(key, value, ttlHours = 24) {
 }
 
 // ---------------------------------------------------------------------------
-// Low-level Gemini call (via Worker proxy, with retry + model fallback)
-//
-// Status handling:
-//   2xx             → success
-//   404             → model retired, skip to next model immediately
-//   429/502/503/504 → transient, retry same model up to 3x with backoff
-//   network err     → retry same model up to 3x with backoff
-//   400/401/403     → request-wide problem, abort everything
+// Fuzzy band-name match. Handles "X High School" vs "X" but avoids
+// false positives like "Francis Howell" matching "Francis Howell Central".
 // ---------------------------------------------------------------------------
-async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens = 4000 } = {}) {
+function bandNameMatches(a, b) {
+  const norm = (s) => (s || "").toLowerCase()
+    .replace(/\s+high school$/i, "")
+    .replace(/\s+hs$/i, "")
+    .replace(/[,.']/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const na = norm(a);
+  const nb = norm(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  if (na.length >= 8 && nb.length >= 8) {
+    return na.includes(nb) || nb.includes(na);
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Low-level Gemini call (via Worker proxy, with retry + model fallback)
+// ---------------------------------------------------------------------------
+async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens = 4000, cacheKey = null } = {}) {
   if (!GEMINI_PROXY_URL || GEMINI_PROXY_URL.includes("YOUR-SUBDOMAIN")) {
     throw new Error("AI proxy URL not configured — edit config.js");
   }
@@ -54,8 +68,6 @@ async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens 
     temperature,
     maxOutputTokens: maxTokens,
     responseMimeType: "application/json",
-    // Gemini 3.x thinks by default, and thinking tokens count against maxOutputTokens.
-    // Our prompts are specific enough that we don't need the model reasoning internally.
     thinkingConfig: { thinkingBudget: 0 }
   };
   if (schema) generationConfig.responseSchema = schema;
@@ -72,19 +84,20 @@ async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens 
   let lastError = null;
 
   for (const model of modelsToTry) {
-    const delays = [0, 2000, 5000]; // immediate, +2s, +5s
+    const delays = [0, 2000, 5000];
     let skipModel = false;
 
     for (let attempt = 0; attempt < delays.length && !skipModel; attempt++) {
-      if (delays[attempt] > 0) {
-        await new Promise(r => setTimeout(r, delays[attempt]));
-      }
+      if (delays[attempt] > 0) await new Promise(r => setTimeout(r, delays[attempt]));
+
+      const headers = { "Content-Type": "application/json" };
+      if (cacheKey) headers["X-Cache-Key"] = cacheKey;
 
       let res;
       try {
         res = await fetch(`${GEMINI_PROXY_URL}?model=${model}`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify(body)
         });
       } catch (netErr) {
@@ -93,7 +106,6 @@ async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens 
         continue;
       }
 
-      // --- Success ---
       if (res.ok) {
         const data = await res.json();
         const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -105,33 +117,27 @@ async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens 
         }
       }
 
-      // --- Non-2xx: read body for the log, then decide ---
       const errText = await res.text();
       lastError = new Error(`${model} → ${res.status}: ${errText.slice(0, 160)}`);
 
-      // 404: model retired / doesn't exist. Skip to next model.
       if (res.status === 404) {
         console.warn(`[ai] ${model} is not available, skipping to next model`);
         skipModel = true;
         break;
       }
 
-      // 400: often means this model doesn't support thinkingConfig.
-      // Retry once without it before giving up.
       if (res.status === 400 && generationConfig.thinkingConfig) {
         console.warn(`[ai] ${model} rejected thinkingConfig, retrying without it`);
         delete generationConfig.thinkingConfig;
-        attempt--; // don't count this as a real attempt
+        attempt--;
         continue;
       }
 
-      // Transient: retry same model
       if ([429, 502, 503, 504].includes(res.status)) {
         console.warn(`[ai] ${model} attempt ${attempt + 1} got ${res.status}, retrying`);
         continue;
       }
 
-      // Anything else — request-wide problem, no point trying other models
       throw lastError;
     }
   }
@@ -167,7 +173,7 @@ function captionLines(band) {
 }
 
 // ---------------------------------------------------------------------------
-// Prompt: past-contest performance summary
+// Prompt: past-contest performance summary (FHC spotlight)
 // ---------------------------------------------------------------------------
 const SUMMARY_SCHEMA = {
   type: "object",
@@ -224,7 +230,7 @@ Output JSON only, matching this schema exactly: ${JSON.stringify(SUMMARY_SCHEMA)
 }
 
 // ---------------------------------------------------------------------------
-// Prompt: upcoming-contest outlook
+// Prompt: upcoming-contest outlook (FHC spotlight)
 // ---------------------------------------------------------------------------
 const OUTLOOK_SCHEMA = {
   type: "object",
@@ -277,6 +283,82 @@ Output JSON only, matching this schema exactly: ${JSON.stringify(OUTLOOK_SCHEMA)
 }
 
 // ---------------------------------------------------------------------------
+// Prompt: field-wide projected standings (upcoming contests)
+// ---------------------------------------------------------------------------
+const FIELD_PROJECTION_SCHEMA = {
+  type: "object",
+  properties: {
+    overview: { type: "string" },
+    projections: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          name:            { type: "string" },
+          projectedScore:  { type: "number" },
+          projectedRank:   { type: "number" },
+          confidence:      { type: "string", enum: ["low", "medium", "high"] },
+          note:            { type: "string" }
+        },
+        required: ["name", "projectedScore", "projectedRank", "confidence", "note"]
+      }
+    }
+  },
+  required: ["overview", "projections"]
+};
+
+function buildFieldProjectionPrompt(comp, roster, history) {
+  const bandBlocks = roster.map(b => {
+    const scores = history[b.name] || [];
+    if (scores.length === 0) {
+      return `${b.name}:\n  (no prior history available)`;
+    }
+    const lines = scores
+      .map(s => `  ${s.year} ${s.contest}: ${s.score.toFixed(3)}`)
+      .join("\n");
+    return `${b.name}:\n${lines}`;
+  }).join("\n\n");
+
+  const rosterList = roster.map((b, i) => `${i + 1}. ${b.name}${b.classification ? ` (${b.classification})` : ""}`).join("\n");
+
+  return `You are a marching band competition analyst projecting final preliminary-round standings for an upcoming contest. Cite specific numbers. Do not use filler. Commit to projections — no hedging.
+
+=== CONTEST ===
+${comp.name} (${comp.year}) — ${comp.loc}
+Date: ${comp.date}
+
+=== REGISTERED BANDS (${roster.length}) ===
+${rosterList}
+
+=== HISTORICAL SCORES PER BAND ===
+(Full history: all prior years of this contest, all prior years of peer contests, and all completed contests this season)
+
+${bandBlocks}
+
+=== TASK ===
+Project the final preliminary ranking and score for each of the ${roster.length} registered bands.
+
+Rules:
+- Use each band's full history as the primary signal. Look for growth trajectories across years, not just the most recent score.
+- Bands with strong current-season momentum should be projected near their current trajectory.
+- Bands with scores at this same contest in prior years should be anchored to that pattern plus their growth curve.
+- Bands with ZERO history should be placed mid-pack with "low" confidence and a note saying the projection is a field-median estimate.
+- Rank must be unique integers 1 through ${roster.length}.
+- Scores should be realistic (marching band BOA-style range: 45-95).
+
+Return JSON with these fields:
+- overview: 2 sentences. Who's projected to win, and what's the most notable projected result.
+- projections: array of ${roster.length} entries, each with:
+  - name: exact band name as listed above
+  - projectedScore: number
+  - projectedRank: integer (1 = highest)
+  - confidence: "low" | "medium" | "high"
+  - note: one sentence citing the specific historical scores that informed this projection
+
+Output JSON only, matching this schema exactly: ${JSON.stringify(FIELD_PROJECTION_SCHEMA)}`;
+}
+
+// ---------------------------------------------------------------------------
 // High-level generators
 // ---------------------------------------------------------------------------
 async function generatePerformanceSummary(comp, fhc, roster, currentRound, priorSeasonScores) {
@@ -287,4 +369,9 @@ async function generatePerformanceSummary(comp, fhc, roster, currentRound, prior
 async function generateContestOutlook(comp, roster, priorSeasonScores, currentSeasonScores) {
   const prompt = buildOutlookPrompt(comp, roster, priorSeasonScores, currentSeasonScores);
   return await callGemini(prompt, { schema: OUTLOOK_SCHEMA, temperature: 0.6, maxTokens: 4000 });
+}
+
+async function generateFieldProjections(comp, roster, history, cacheKey = null) {
+  const prompt = buildFieldProjectionPrompt(comp, roster, history);
+  return await callGemini(prompt, { schema: FIELD_PROJECTION_SCHEMA, temperature: 0.5, maxTokens: 8000, cacheKey });
 }
