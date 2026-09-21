@@ -589,9 +589,7 @@ async function gatherFieldHistory(comp, allEntries, roster) {
 
   const fhcHistory = history["Francis Howell Central"];
   console.log("[gatherFieldHistory] FHC history:", fhcHistory);
-  console.log("[gatherFieldHistory] bands with history:", Object.values(history).filter(a => a.length > 0).length);
-  console.log("[gatherFieldHistory] bands with no history:", Object.values(history).filter(a => a.length === 0).length);
-
+  
   return history;
 }
 
