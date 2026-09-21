@@ -57,6 +57,14 @@ function bandNameMatches(a, b) {
 
 // ---------------------------------------------------------------------------
 // Low-level Gemini call
+//
+// Status handling:
+//   2xx             → success
+//   404             → model retired, skip to next model immediately
+//   429             → rate limit / quota, skip to next model immediately
+//   502/503/504     → transient overload, retry same model up to 3x
+//   network err     → retry same model up to 3x
+//   400/401/403     → request-wide problem, abort everything
 // ---------------------------------------------------------------------------
 async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens = 4000, cacheKey = null } = {}) {
   if (!GEMINI_PROXY_URL || GEMINI_PROXY_URL.includes("YOUR-SUBDOMAIN")) {
@@ -81,6 +89,7 @@ async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens 
     : [GEMINI_MODEL || "gemini-flash-latest"];
 
   let lastError = null;
+  const errorsByModel = [];
 
   for (const model of modelsToTry) {
     const delays = [0, 2000, 5000];
@@ -118,13 +127,25 @@ async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens 
 
       const errText = await res.text();
       lastError = new Error(`${model} → ${res.status}: ${errText.slice(0, 160)}`);
+      errorsByModel.push({ model, status: res.status });
 
+      // 404: model retired / doesn't exist. Skip to next model.
       if (res.status === 404) {
         console.warn(`[ai] ${model} is not available, skipping to next model`);
         skipModel = true;
         break;
       }
 
+      // 429: rate limited or out of quota. Retrying the same model won't help
+      // (Gemini's free-tier quota is per-project), so skip straight to the next.
+      if (res.status === 429) {
+        console.warn(`[ai] ${model} rate limited (429), skipping to next model`);
+        skipModel = true;
+        break;
+      }
+
+      // 400: often means this model doesn't support thinkingConfig.
+      // Retry once without it before giving up.
       if (res.status === 400 && generationConfig.thinkingConfig) {
         console.warn(`[ai] ${model} rejected thinkingConfig, retrying without it`);
         delete generationConfig.thinkingConfig;
@@ -132,13 +153,26 @@ async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens 
         continue;
       }
 
-      if ([429, 502, 503, 504].includes(res.status)) {
+      // Transient overload: retry same model
+      if ([502, 503, 504].includes(res.status)) {
         console.warn(`[ai] ${model} attempt ${attempt + 1} got ${res.status}, retrying`);
         continue;
       }
 
+      // Anything else — request-wide problem, no point trying other models
       throw lastError;
     }
+  }
+
+  // All models exhausted. Build a helpful error.
+  const allRateLimited = errorsByModel.length > 0 &&
+    errorsByModel.every(e => e.status === 429);
+
+  if (allRateLimited) {
+    throw new Error(
+      "Daily quota reached across all models. Gemini's free tier resets daily; " +
+      "try again tomorrow, or upgrade to a paid tier for higher limits."
+    );
   }
 
   throw new Error(`All models unavailable. Last: ${lastError?.message || "unknown"}`);
