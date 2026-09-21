@@ -106,6 +106,9 @@ function parseFullWorkbookCSV(rawCsvText) {
   const parsed = Papa.parse(rawCsvText, { skipEmptyLines: false });
   const rows = parsed.data;
 
+  console.log("[Raw CSV first 500 chars]", rawCsvText.slice(0, 500));
+  console.log("[First 8 rows]", rows.slice(0, 8));
+
   let currentBlock = "Prelims";
   let currentClass = "";
   let inlineClassColIdx = -1;
