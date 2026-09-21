@@ -1,5 +1,5 @@
 // =============================================================================
-// Gemini AI Client — proxied through Cloudflare Worker
+// Gemini AI Client — Analytical Marching Band Prediction & Recap Engine
 // =============================================================================
 
 // ---------------------------------------------------------------------------
@@ -57,25 +57,17 @@ function bandNameMatches(a, b) {
 
 // ---------------------------------------------------------------------------
 // Low-level Gemini call
-//
-// Status handling:
-//   2xx             → success
-//   404             → model retired, skip to next model immediately
-//   429             → rate limit / quota, skip to next model immediately
-//   502/503/504     → transient overload, retry same model up to 3x
-//   network err     → retry same model up to 3x
-//   400/401/403     → request-wide problem, abort everything
 // ---------------------------------------------------------------------------
-async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens = 4000, cacheKey = null } = {}) {
+async function callGemini(prompt, { schema = null, temperature = 0.3, maxTokens = 6000, cacheKey = null } = {}) {
   if (!GEMINI_PROXY_URL || GEMINI_PROXY_URL.includes("YOUR-SUBDOMAIN")) {
     throw new Error("AI proxy URL not configured — edit config.js");
   }
 
+  // Allow native model reasoning; do NOT zero-out thinking budget
   const generationConfig = {
     temperature,
     maxOutputTokens: maxTokens,
-    responseMimeType: "application/json",
-    thinkingConfig: { thinkingBudget: 0 }
+    responseMimeType: "application/json"
   };
   if (schema) generationConfig.responseSchema = schema;
 
@@ -86,13 +78,13 @@ async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens 
 
   const modelsToTry = (typeof GEMINI_MODELS !== "undefined" && GEMINI_MODELS.length)
     ? GEMINI_MODELS
-    : [GEMINI_MODEL || "gemini-flash-latest"];
+    : [GEMINI_MODEL || "gemini-1.5-flash-latest"];
 
   let lastError = null;
   const errorsByModel = [];
 
   for (const model of modelsToTry) {
-    const delays = [0, 2000, 5000];
+    const delays = [0, 2000, 4000];
     let skipModel = false;
 
     for (let attempt = 0; attempt < delays.length && !skipModel; attempt++) {
@@ -129,50 +121,22 @@ async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens 
       lastError = new Error(`${model} → ${res.status}: ${errText.slice(0, 160)}`);
       errorsByModel.push({ model, status: res.status });
 
-      // 404: model retired / doesn't exist. Skip to next model.
-      if (res.status === 404) {
-        console.warn(`[ai] ${model} is not available, skipping to next model`);
+      if (res.status === 404 || res.status === 429) {
         skipModel = true;
         break;
       }
 
-      // 429: rate limited or out of quota. Retrying the same model won't help
-      // (Gemini's free-tier quota is per-project), so skip straight to the next.
-      if (res.status === 429) {
-        console.warn(`[ai] ${model} rate limited (429), skipping to next model`);
-        skipModel = true;
-        break;
-      }
-
-      // 400: often means this model doesn't support thinkingConfig.
-      // Retry once without it before giving up.
-      if (res.status === 400 && generationConfig.thinkingConfig) {
-        console.warn(`[ai] ${model} rejected thinkingConfig, retrying without it`);
-        delete generationConfig.thinkingConfig;
-        attempt--;
-        continue;
-      }
-
-      // Transient overload: retry same model
       if ([502, 503, 504].includes(res.status)) {
-        console.warn(`[ai] ${model} attempt ${attempt + 1} got ${res.status}, retrying`);
         continue;
       }
 
-      // Anything else — request-wide problem, no point trying other models
       throw lastError;
     }
   }
 
-  // All models exhausted. Build a helpful error.
-  const allRateLimited = errorsByModel.length > 0 &&
-    errorsByModel.every(e => e.status === 429);
-
+  const allRateLimited = errorsByModel.length > 0 && errorsByModel.every(e => e.status === 429);
   if (allRateLimited) {
-    throw new Error(
-      "Daily quota reached across all models. Gemini's free tier resets daily; " +
-      "try again tomorrow, or upgrade to a paid tier for higher limits."
-    );
+    throw new Error("Daily quota reached across all models. Try again tomorrow or upgrade API key.");
   }
 
   throw new Error(`All models unavailable. Last: ${lastError?.message || "unknown"}`);
@@ -192,30 +156,30 @@ function classMedian(roster, classification) {
 function captionLines(band) {
   const c = band.captions || {};
   const lines = [];
-  if (c.musicInd != null)     lines.push(`  Music Individual: ${c.musicInd.toFixed(3)}`);
-  if (c.musicEns != null)     lines.push(`  Music Ensemble: ${c.musicEns.toFixed(3)}`);
-  if (c.musicTotal != null)   lines.push(`  Music Total: ${c.musicTotal.toFixed(3)}`);
-  if (c.visualInd != null)    lines.push(`  Visual Individual: ${c.visualInd.toFixed(3)}`);
-  if (c.visualEns != null)    lines.push(`  Visual Ensemble: ${c.visualEns.toFixed(3)}`);
-  if (c.visualTotal != null)  lines.push(`  Visual Total: ${c.visualTotal.toFixed(3)}`);
-  if (c.geMusic != null)      lines.push(`  GE Music: ${c.geMusic.toFixed(3)}`);
-  if (c.geVisual != null)     lines.push(`  GE Visual: ${c.geVisual.toFixed(3)}`);
-  if (c.geTotal != null)      lines.push(`  GE Total: ${c.geTotal.toFixed(3)}`);
-  if (c.fieldTiming != null)  lines.push(`  Field & Timing: ${c.fieldTiming.toFixed(3)}`);
-  return lines.length ? lines.join("\n") : "  (no caption breakdown available)";
+  if (c.musicInd != null)     lines.push(`  - Music Individual: ${c.musicInd.toFixed(3)}`);
+  if (c.musicEns != null)     lines.push(`  - Music Ensemble: ${c.musicEns.toFixed(3)}`);
+  if (c.musicTotal != null)   lines.push(`  - Music Total: ${c.musicTotal.toFixed(3)}`);
+  if (c.visualInd != null)    lines.push(`  - Visual Individual: ${c.visualInd.toFixed(3)}`);
+  if (c.visualEns != null)    lines.push(`  - Visual Ensemble: ${c.visualEns.toFixed(3)}`);
+  if (c.visualTotal != null)  lines.push(`  - Visual Total: ${c.visualTotal.toFixed(3)}`);
+  if (c.geMusic != null)      lines.push(`  - General Effect Music: ${c.geMusic.toFixed(3)}`);
+  if (c.geVisual != null)     lines.push(`  - General Effect Visual: ${c.geVisual.toFixed(3)}`);
+  if (c.geTotal != null)      lines.push(`  - GE Total: ${c.geTotal.toFixed(3)}`);
+  if (c.fieldTiming != null)  lines.push(`  - Field & Timing Penalty: ${c.fieldTiming.toFixed(3)}`);
+  return lines.length ? lines.join("\n") : "  (Full caption breakdown not recorded in sheet)";
 }
 
 // ---------------------------------------------------------------------------
-// Prompt: past-contest performance summary (FHC spotlight)
+// Prompt 1: Past Contest Official Performance Summary (FHC Spotlight)
 // ---------------------------------------------------------------------------
 const SUMMARY_SCHEMA = {
   type: "object",
   properties: {
-    headline:  { type: "string" },
-    summary:   { type: "string" },
-    strengths: { type: "array", items: { type: "string" } },
-    weaknesses:{ type: "array", items: { type: "string" } },
-    trajectory:{ type: "string" }
+    headline:   { type: "string" },
+    summary:    { type: "string" },
+    strengths:  { type: "array", items: { type: "string" } },
+    weaknesses: { type: "array", items: { type: "string" } },
+    trajectory: { type: "string" }
   },
   required: ["headline", "summary", "strengths", "weaknesses", "trajectory"]
 };
@@ -228,45 +192,41 @@ function buildSummaryPrompt(comp, fhc, roster, currentRound, priorSeasonScores) 
   const median = classMedian(roster, fhc.classification);
 
   const priorSeasonsText = priorSeasonScores.length
-    ? priorSeasonScores.map(p => `  ${p.year} (${comp.name}): ${p.score.toFixed(3)}`).join("\n")
-    : "  (no prior same-contest history)";
+    ? priorSeasonScores.map(p => `  * ${p.year} (${comp.name}): ${p.score.toFixed(3)}`).join("\n")
+    : "  * No recorded appearances in prior seasons.";
 
-  return `You are a marching band competition analyst writing for band directors. Cite specific numbers. Do not use filler phrases like "showcased their talents" or "demonstrated excellence". Be direct.
+  return `You are an elite competitive marching band adjudicator and data analyst providing executive debriefs for band directors and design coordinators.
 
-=== CONTEXT ===
-Contest: ${comp.name} (${comp.year}), ${comp.loc}
-Round: ${currentRound}
+CIRCUIT & CONTEST FRAMEWORK:
+- Contest: ${comp.name} (${comp.year}), Location: ${comp.loc}
+- Round: ${currentRound}
+- Scoring context: Local Missouri/Illinois Invitationals (MEMC, Lafayette, Tiger Ambush) evaluate early season performance execution and class awards. BOA Super Regionals evaluate high-velocity National-caliber General Effect and precision.
 
-FHC result: ${fhc.base.toFixed(3)} — Rank #${rank} of ${roster.length} total bands
-FHC class: ${fhc.classification || "unclassified"}
-Class rank: ${classPeers.findIndex(b => b.name === fhc.name) + 1} of ${classPeers.length}
+FHC OFFICIAL RESULTS:
+- Official Total Score: ${fhc.base.toFixed(3)}
+- Overall Rank: #${rank} of ${roster.length}
+- Division / Class: ${fhc.classification || "Open / Single Class"}
+- Class Standing: #${classPeers.findIndex(b => b.name === fhc.name) + 1} of ${classPeers.length}
+- Class Top Score: ${classWinner ? `${classWinner.name} (${classWinner.base.toFixed(3)})` : "N/A"}
+- Class Median Score: ${median != null ? median.toFixed(3) : "N/A"} (FHC Spread: ${median != null ? (fhc.base - median >= 0 ? "+" : "") + (fhc.base - median).toFixed(3) : "N/A"})
 
-FHC caption breakdown:
+FHC CAPTION RECAP:
 ${captionLines(fhc)}
 
-Class winner: ${classWinner ? `${classWinner.name} — ${classWinner.base.toFixed(3)}` : "n/a"}
-Class median: ${median != null ? median.toFixed(3) : "n/a"}
-FHC delta vs class median: ${median != null ? (fhc.base - median).toFixed(3) : "n/a"}
-
-FHC prior appearances at this same contest:
+HISTORICAL CONTEST TRACK RECORD:
 ${priorSeasonsText}
 
-=== TASK ===
-Return JSON with these fields:
-- headline: 8 words or fewer. Concrete, not promotional.
-- summary: 2 sentences. Cite specific caption numbers and explain what drove the placement.
-- strengths: 1-2 bullets, each citing a specific number.
-- weaknesses: 1-2 bullets, each citing a specific number.
-- trajectory: 1 sentence on how this compares to FHC's prior appearances at this contest.
+ANALYTICAL GUIDELINES:
+1. Speak directly as an expert marching arts designer. Zero generic promotional fluff ("great energy", "talented students").
+2. Focus on caption spreads: Was placement driven by General Effect, Visual Ensemble execution, or Music sub-totals?
+3. Quantify every claim with the exact decimal scores provided above.
 
-Output JSON only, matching this schema exactly: ${JSON.stringify(SUMMARY_SCHEMA)}`;
+Return valid JSON adhering to this schema:
+${JSON.stringify(SUMMARY_SCHEMA)}`;
 }
 
 // ---------------------------------------------------------------------------
-// Prompt: upcoming-contest outlook text (FHC spotlight headline + reasoning)
-// The numeric projection comes from the field-wide projection. This call
-// only writes the reasoning/headline. Numbers are passed in for context so
-// the reasoning matches what's shown on the tiles.
+// Prompt 2: Upcoming Contest Outlook (FHC Spotlight Context)
 // ---------------------------------------------------------------------------
 const OUTLOOK_SCHEMA = {
   type: "object",
@@ -279,40 +239,40 @@ const OUTLOOK_SCHEMA = {
 
 function buildOutlookPrompt(comp, fhcProjection, priorSeasonScores) {
   const priorText = priorSeasonScores.length
-    ? priorSeasonScores.map(p => `  ${p.year}: ${p.score.toFixed(3)}`).join("\n")
-    : "  (FHC has no prior appearances at this contest)";
+    ? priorSeasonScores.map(p => `  * ${p.year}: ${p.score.toFixed(3)}`).join("\n")
+    : "  * No prior contest history on file.";
 
   const rank = fhcProjection.projectedRank;
   const score = fhcProjection.projectedScore;
-  const finalsLine = fhcProjection.finalsChance != null && fhcProjection.finalsChance > 0
-    ? `\nProjected finals-advance chance: ${Math.round(fhcProjection.finalsChance)}%`
+  const advanceNote = fhcProjection.finalsChance != null && fhcProjection.finalsChance > 0
+    ? `\n- Projected Finals Advance Probability: ${Math.round(fhcProjection.finalsChance)}%`
     : "";
 
-  return `You are a marching band competition analyst writing for band directors. Cite specific numbers. Do not use filler phrases like "showcased their talents" or "demonstrated excellence". Be direct.
+  return `You are an expert competitive marching band analyst writing an advance scouting outlook for the directors of Francis Howell Central (FHC).
 
-=== CONTEXT ===
-Contest: ${comp.name} (${comp.year}), ${comp.loc}
-Date: ${comp.date}
+CONTEST CONTEXT:
+- Contest: ${comp.name} (${comp.year}) — ${comp.loc}
+- Contest Date: ${comp.date}
 
-A separate field-wide projection model has already calculated these numbers for Francis Howell Central at this contest:
-  Projected preliminary score: ${score.toFixed(2)}
-  Projected rank: #${rank}${finalsLine}
+PRE-COMPUTED PROJECTIONS FOR FHC:
+- Projected Score: ${score.toFixed(2)}
+- Projected Standing: #${rank} overall${advanceNote}
 
-FHC prior appearances at this same contest:
+HISTORICAL PERFORMANCES AT THIS CONTEST:
 ${priorText}
 
-=== TASK ===
-Do NOT recompute or restate the projected score/rank. Instead, write text that explains WHY these numbers make sense.
+DIRECTIVES:
+1. Do NOT recalculate or contradict the projected numbers above.
+2. Explain the exact competitive dynamics: venue scoring trends, calendar week pacing, and what caption performance (Music vs. Visual vs. GE) FHC must deliver to exceed or fall below this projection.
+3. Keep the headline under 8 words, bold and journalistic.
+4. Reasoning must be exactly 2 dense, insightful sentences with specific context.
 
-Return JSON with these fields:
-- headline: 8 words or fewer. Concrete, not promotional. May reference the placement.
-- reasoning: exactly 2 sentences. Explain what FHC's history at this contest and this season suggests, and what would need to go right (or wrong) for them to beat or miss the projection.
-
-Output JSON only, matching this schema exactly: ${JSON.stringify(OUTLOOK_SCHEMA)}`;
+Return valid JSON matching this schema:
+${JSON.stringify(OUTLOOK_SCHEMA)}`;
 }
 
 // ---------------------------------------------------------------------------
-// Prompt: field-wide projected standings (upcoming contests)
+// Prompt 3: Field-Wide Standings & Bubble Projections (Upcoming Contests)
 // ---------------------------------------------------------------------------
 const FIELD_PROJECTION_SCHEMA = {
   type: "object",
@@ -340,69 +300,58 @@ const FIELD_PROJECTION_SCHEMA = {
 };
 
 function buildFieldProjectionPrompt(comp, roster, history) {
+  const isSuperRegional = comp.name.toLowerCase().includes("super regional") || comp.name.toLowerCase().includes("boa");
+  const defaultFinalsSize = isSuperRegional ? 14 : (roster.length >= 16 ? 12 : 10);
+
   const bandBlocks = roster.map(b => {
     const scores = history[b.name] || [];
     if (scores.length === 0) {
-      return `${b.name}:\n  (no prior history available)`;
+      return `${b.name} (${b.classification || "Unclassified"}):\n  - No historical scores on record.`;
     }
     const lines = scores
-      .map(s => `  ${s.year} ${s.contest}: ${s.score.toFixed(3)}`)
+      .map(s => `  - ${s.year} ${s.contest}: ${s.score.toFixed(3)}`)
       .join("\n");
-    return `${b.name}:\n${lines}`;
+    return `${b.name} (${b.classification || "Unclassified"}):\n${lines}`;
   }).join("\n\n");
 
-  const rosterList = roster.map((b, i) => `${i + 1}. ${b.name}${b.classification ? ` (${b.classification})` : ""}`).join("\n");
+  const rosterList = roster.map((b, i) => `${i + 1}. ${b.name}${b.classification ? ` [${b.classification}]` : ""}`).join("\n");
 
-  return `You are a marching band competition analyst projecting final preliminary-round standings for an upcoming contest. Cite specific numbers. Do not use filler. Commit to projections.
+  return `You are the lead competitive analyst for high school marching band circuits across the Midwest. You are modeling official preliminary-round placements and finals-qualification benchmarks for an upcoming event.
 
-=== CONTEST ===
-${comp.name} (${comp.year}) — ${comp.loc}
-Date: ${comp.date}
-Finals round: ${comp.hasFinals ? "Yes — top bands advance" : "No — single round, prelims is final"}
+CONTEST PARAMETERS:
+- Event: ${comp.name} (${comp.year})
+- Location: ${comp.loc}
+- Contest Date: ${comp.date}
+- Multi-Round Event: ${comp.hasFinals ? `YES (Championship Finals round; top ${defaultFinalsSize} advance)` : "NO (Single-round class competition; prelims is final)"}
 
-=== REGISTERED BANDS (${roster.length}) ===
+FIELD ROSTER (${roster.length} PROGRAMS):
 ${rosterList}
 
-=== HISTORICAL SCORES PER BAND ===
-(Full history: all prior years of this contest, all prior years of peer contests, all completed contests this season)
-
+COMPREHENSIVE HISTORICAL RECORDS BY PROGRAM:
 ${bandBlocks}
 
-=== TASK ===
-Project final preliminary-round standings for all ${roster.length} registered bands.
+MODELING & PROJECTION RULES:
+1. SCORING SCALES:
+   - Early season (Mid-September: MEMC, Lafayette, Tiger Ambush, BA Invite): Scores span 58.000 to 76.000.
+   - Late season / Super Regionals (Late October: BOA St. Louis): Top bands score 84.000-92.000, bubble bands hover around 76.000-80.000, lower tier 62.000-72.000.
+2. MONOTONIC RANKING INTEGRITY:
+   - projectedRank MUST be strictly unique integers from 1 through ${roster.length}.
+   - projectedScore MUST decrease strictly as projectedRank increases (Rank 1 > Rank 2 > Rank 3 ...).
+3. MULTI-YEAR MOMENTUM & WEIGHTING:
+   - Weight current-season completed shows highest, followed by prior-year placements at this exact venue.
+   - Programs with unrecorded history should be slotted in the lower-mid pack with "low" confidence.
+4. FINALS BUBBLE DYNAMICS:
+   ${comp.hasFinals
+     ? `- Set finalsSize = ${defaultFinalsSize}.
+        - finalsCutoff MUST equal the exact projectedScore of the band at rank #${defaultFinalsSize}.
+        - finalsChance (0-100%): Ranks 1 through ${Math.floor(defaultFinalsSize * 0.7)} get 85-99%; ranks right on the bubble (ranks ${defaultFinalsSize - 1} to${defaultFinalsSize + 2}) get 35-65%; bands well below get 0-15%.`
+     : `- This event has NO Finals round. Set finalsSize = 0, finalsCutoff = 0, and finalsChance = 0 for all bands.`}
 
-Rules:
-- Use each band's full history as the primary signal. Look for multi-year growth trajectories, not just the most recent score.
-- Bands with current-season momentum should be projected near their current trajectory, adjusted for venue difficulty.
-- Bands with scores at this same contest in prior years should be anchored to that pattern plus their growth curve.
-- Bands with ZERO history → mid-pack, low confidence, note explaining the projection is a field-median estimate.
-- projectedRank must be unique integers 1 through ${roster.length}.
-- projectedScore should be realistic (marching band range 45-95).
+OVERVIEW DELIVERABLE:
+A concise 2-3 sentence executive forecast highlighting the projected champion and predicted score, the critical bubble battle line, and FHC's projected trajectory.
 
-FINALS CHANCE:
-${comp.hasFinals
-  ? `This contest has a finals round. Estimate finalsSize (how many bands advance — commonly 10-14 for a field this size) and finalsCutoff (the projected score of the last band to make the cut). For each band, compute finalsChance as a percentage (0-100) representing the probability they advance. Use the cut line as the 50% anchor: bands projected well above the cutoff should be 90-100%, bands right at the cutoff around 40-60%, bands well below 0-15%.`
-  : `This contest has NO finals round. Set finalsSize = 0, finalsCutoff = 0, and finalsChance = 0 for every band.`}
-
-OVERVIEW:
-Write a 2-3 sentence overview that names:
-1. The projected winner and their likely score.
-2. The most notable projection (a band that over- or under-performs its history).
-${comp.hasFinals ? `3. The projected finals bubble — who's on the edge of making the cut and what score they need.` : ""}
-
-Return JSON with these fields:
-- overview: string
-- finalsSize: number
-- finalsCutoff: number
-- projections: array of ${roster.length} entries, each with:
-  - name: exact band name
-  - projectedScore: number
-  - projectedRank: integer
-  - finalsChance: number (0-100)
-  - confidence: "low" | "medium" | "high"
-  - note: 1-2 sentences of reasoning. Cite the specific historical scores that informed this projection.
-
-Output JSON only, matching this schema exactly: ${JSON.stringify(FIELD_PROJECTION_SCHEMA)}`;
+Return valid JSON adhering to this schema:
+${JSON.stringify(FIELD_PROJECTION_SCHEMA)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -410,15 +359,15 @@ Output JSON only, matching this schema exactly: ${JSON.stringify(FIELD_PROJECTIO
 // ---------------------------------------------------------------------------
 async function generatePerformanceSummary(comp, fhc, roster, currentRound, priorSeasonScores) {
   const prompt = buildSummaryPrompt(comp, fhc, roster, currentRound, priorSeasonScores);
-  return await callGemini(prompt, { schema: SUMMARY_SCHEMA, temperature: 0.5, maxTokens: 4000 });
+  return await callGemini(prompt, { schema: SUMMARY_SCHEMA, temperature: 0.3, maxTokens: 4000 });
 }
 
 async function generateContestOutlook(comp, fhcProjection, priorSeasonScores, cacheKey = null) {
   const prompt = buildOutlookPrompt(comp, fhcProjection, priorSeasonScores);
-  return await callGemini(prompt, { schema: OUTLOOK_SCHEMA, temperature: 0.6, maxTokens: 1500, cacheKey });
+  return await callGemini(prompt, { schema: OUTLOOK_SCHEMA, temperature: 0.4, maxTokens: 2000, cacheKey });
 }
 
 async function generateFieldProjections(comp, roster, history, cacheKey = null) {
   const prompt = buildFieldProjectionPrompt(comp, roster, history);
-  return await callGemini(prompt, { schema: FIELD_PROJECTION_SCHEMA, temperature: 0.5, maxTokens: 8000, cacheKey });
+  return await callGemini(prompt, { schema: FIELD_PROJECTION_SCHEMA, temperature: 0.2, maxTokens: 8000, cacheKey });
 }
