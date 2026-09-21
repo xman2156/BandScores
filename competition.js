@@ -1,5 +1,5 @@
 // =============================================================================
-// Live Master Directory Connection & Rock-Solid Universal Parser
+// Live Master Directory Connection & Rock-Solid Universal Recap Engine
 // =============================================================================
 
 const MASTER_INDEX_SPREADSHEET_ID = "106s_uuX5YOXAS_cXPCqj4HaO69DK8wHMWGevKUhTWd0";
@@ -93,14 +93,14 @@ async function fetchMasterDirectory() {
       if (liveEntries.length > 0) return liveEntries;
     }
   } catch (err) {
-    console.warn("Could not reach Master Directory, utilizing local catalog:", err);
+    console.warn("Could not reach Master Directory, utilizing fallback catalog:", err);
   }
 
   return fallbackDirectory;
 }
 
 // =============================================================================
-// Adaptive CSV Parser (Exact Token Matching for Classes & Captions)
+// Robust Universal CSV Parser
 // =============================================================================
 function parseFullWorkbookCSV(rawCsvText) {
   const parsed = Papa.parse(rawCsvText, { skipEmptyLines: false });
@@ -116,20 +116,19 @@ function parseFullWorkbookCSV(rawCsvText) {
   const ignoreWords = [
     "music performance", "visual performance", "general effect", "judge panel",
     "individual", "ensemble", "total", "order", "school name", "field & timing",
-    "prelims", "finals", "1st place", "2nd place", "3rd place", "4th place",
-    "5th place", "6th place", "7th place", "8th place", "9th place", "10th place",
-    "overall rank", "class rank", "rating", "score", "sub total", "music", "visual", 
-    "panel", "oustanding music", "outstanding visual", "outstanding general effect",
-    "outstanding music", "outstanding", "place"
+    "prelims", "finals", "overall rank", "class rank", "rating", "score", "sub total",
+    "music", "visual", "panel", "oustanding music", "outstanding visual", "outstanding general effect",
+    "outstanding music", "outstanding", "awards", "caption awards", "recap"
   ];
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i].map(c => (c || "").toString().trim());
     const line = row.join(" ").toLowerCase();
 
+    // Skip empty lines
     if (row.every(c => c === "")) continue;
 
-    // 1. Detect Prelims vs Finals round divisions
+    // 1. Detect Block Switches (Finals vs Prelims)
     if (line.includes("finals") && !line.includes("field & timing")) {
       currentBlock = "Finals";
       activeSectionClass = "";
@@ -138,61 +137,57 @@ function parseFullWorkbookCSV(rawCsvText) {
     }
     if (line.includes("prelims")) {
       currentBlock = "Prelims";
-      activeSectionClass = "";
       continue;
     }
 
-    // 2. Exact Section Banner Match
-    let bannerMatch = "";
+    // 2. Identify Section Banners (MEMC: Class A, AA, AAA, AAAA | Lafayette: Gold, Black, White)
+    // Scan every non-empty cell in the row
+    let foundBanner = "";
     for (let c = 0; c < row.length; c++) {
-      const cell = row[c].trim().toLowerCase();
-      if (!cell) continue;
+      const cell = row[c].trim();
+      const cellLower = cell.toLowerCase();
+      if (!cellLower) continue;
 
-      if (/^class\s*(aaaa|4a)$/i.test(cell) || cell === "class aaaa" || cell === "class 4a") {
-        bannerMatch = "Class AAAA"; break;
-      } else if (/^class\s*(aaa|3a)$/i.test(cell) || cell === "class aaa" || cell === "class 3a") {
-        bannerMatch = "Class AAA"; break;
-      } else if (/^class\s*(aa|2a)$/i.test(cell) || cell === "class aa" || cell === "class 2a") {
-        bannerMatch = "Class AA"; break;
-      } else if (/^class\s*(a|1a)$/i.test(cell) || cell === "class a" || cell === "class 1a") {
-        bannerMatch = "Class A"; break;
-      } else if (/^gold(\s+division)?$/i.test(cell) || cell === "gold" || cell === "gold division") {
-        bannerMatch = "Gold Division"; break;
-      } else if (/^black(\s+division)?$/i.test(cell) || cell === "black" || cell === "black division") {
-        bannerMatch = "Black Division"; break;
-      } else if (/^white(\s+division)?$/i.test(cell) || cell === "white" || cell === "white division") {
-        bannerMatch = "White Division"; break;
+      if (/^class\s*(aaaa|4a)$/i.test(cellLower) || cellLower === "class 4a" || cellLower === "class aaaa") {
+        foundBanner = "Class AAAA"; break;
+      } else if (/^class\s*(aaa|3a)$/i.test(cellLower) || cellLower === "class 3a" || cellLower === "class aaa") {
+        foundBanner = "Class AAA"; break;
+      } else if (/^class\s*(aa|2a)$/i.test(cellLower) || cellLower === "class 2a" || cellLower === "class aa") {
+        foundBanner = "Class AA"; break;
+      } else if (/^class\s*(a|1a)$/i.test(cellLower) || cellLower === "class 1a" || cellLower === "class a") {
+        foundBanner = "Class A"; break;
+      } else if (cellLower === "gold" || cellLower === "gold division") {
+        foundBanner = "Gold Division"; break;
+      } else if (cellLower === "black" || cellLower === "black division") {
+        foundBanner = "Black Division"; break;
+      } else if (cellLower === "white" || cellLower === "white division") {
+        foundBanner = "White Division"; break;
       }
     }
 
-    if (bannerMatch) {
-      activeSectionClass = bannerMatch;
+    if (foundBanner) {
+      activeSectionClass = foundBanner;
       continue;
     }
 
-    // 3. BOA Inline Column Detection
+    // 3. BOA Inline Column Detection (Requires both 'Class' AND BOA headers like 'Rating' or 'Field & Timing')
     const lowerRow = row.map(c => c.toLowerCase());
-    const cIdx = lowerRow.indexOf("class");
-    if (cIdx !== -1) {
-      classColIdx = cIdx;
+    if (lowerRow.includes("class") && (lowerRow.includes("rating") || lowerRow.includes("music performance") || lowerRow.includes("field & timing"))) {
+      classColIdx = lowerRow.indexOf("class");
       continue;
     }
 
-    // Skip Judge Panels, caption headers, or placement award rows
+    // 4. Skip Judge Rows, Subheaders, and Standalone Award Announcements
     if (
-      line.includes("judge panel") || 
-      line.includes("individual") || 
-      line.includes("ensemble") ||
-      line.includes("oustanding") ||
-      line.includes("outstanding") ||
-      line.includes("1st place") ||
-      line.includes("2nd place") ||
-      line.includes("3rd place")
+      line.includes("judge panel") ||
+      (line.includes("individual") && line.includes("ensemble")) ||
+      line.includes("caption awards") ||
+      (line.includes("outstanding") && !row.some(c => parseFloat(c) >= 35.0))
     ) {
       continue;
     }
 
-    // 4. Score extraction (right-to-left scan for numeric value 35.0 - 100.0)
+    // 5. Extract Total Score (Right to Left scan for number between 35.0 and 100.0)
     let scoreVal = 0.0;
     for (let c = row.length - 1; c >= 0; c--) {
       const val = parseFloat(row[c]);
@@ -202,9 +197,9 @@ function parseFullWorkbookCSV(rawCsvText) {
       }
     }
 
-    // 5. Candidate School Name (Checks first 3 columns)
+    // 6. Extract Candidate School Name (Scan first 4 columns)
     let candidateName = "";
-    for (let c = 0; c < Math.min(row.length, 3); c++) {
+    for (let c = 0; c < Math.min(row.length, 4); c++) {
       const cell = row[c];
       const cellLower = cell.toLowerCase();
 
@@ -217,19 +212,37 @@ function parseFullWorkbookCSV(rawCsvText) {
         !cellLower.includes("division") &&
         !cellLower.includes("panel") &&
         !cellLower.includes("stats") &&
-        !cellLower.includes("place")
+        !cellLower.startsWith("1st") &&
+        !cellLower.startsWith("2nd") &&
+        !cellLower.startsWith("3rd") &&
+        !cellLower.startsWith("4th") &&
+        !cellLower.startsWith("5th") &&
+        !cellLower.startsWith("6th") &&
+        !cellLower.startsWith("7th") &&
+        !cellLower.startsWith("8th") &&
+        !cellLower.startsWith("9th") &&
+        !cellLower.startsWith("10th")
       ) {
         candidateName = cell;
         break;
       }
     }
 
+    // If no school name found, skip row
     if (!candidateName) continue;
 
-    // 6. Classification assignment:
-    // If inline column present (BOA), use it.
-    // If in Prelims with an active section banner (MEMC/Lafayette), use it.
-    // In Finals, do not force prelim division names unless explicitly defined.
+    // Deduplicate: If this school was already added to this block with a real score, skip award echoes
+    const targetList = currentBlock === "Finals" ? finals : prelims;
+    const existingEntry = targetList.find(b => b.name.toLowerCase() === candidateName.toLowerCase());
+    if (existingEntry) {
+      // If the new row has a score and existing didn't, update it; otherwise ignore duplicate
+      if (scoreVal > 0 && existingEntry.base === 0) {
+        existingEntry.base = scoreVal;
+      }
+      continue;
+    }
+
+    // 7. Determine Classification
     let finalClass = "";
     if (classColIdx !== -1 && row[classColIdx] && row[classColIdx].length > 0) {
       const val = row[classColIdx].trim();
@@ -246,11 +259,7 @@ function parseFullWorkbookCSV(rawCsvText) {
       base: scoreVal
     };
 
-    if (currentBlock === "Finals") {
-      finals.push(bandObj);
-    } else {
-      prelims.push(bandObj);
-    }
+    targetList.push(bandObj);
   }
 
   return { prelims, finals, hasFinalsInSheet: detectedFinals };
@@ -295,7 +304,7 @@ async function loadCompetitionView(eventKey, selectedYear, selectedRound) {
     return;
   }
 
-  // Populate Year Dropdown
+  // Populate Season Dropdown on individual competition page
   const uniqueYears = [...new Set(contestSeasons.map(c => c.year))].filter(Boolean).sort((a, b) => b - a);
   const yearSelect = document.getElementById("yearDropdown");
 
@@ -357,7 +366,7 @@ async function loadCompetitionView(eventKey, selectedYear, selectedRound) {
 function renderUI(comp, year, currentRound, tabName) {
   const isPast = parseInt(year, 10) < new Date().getFullYear();
 
-  // Round Toggle
+  // Round Toggle Visibility
   const roundContainer = document.getElementById("roundToggleContainer");
   const showToggle = comp.hasFinals || activeWorkbookData.hasFinalsInSheet || Boolean(comp.finalsTab);
 
@@ -453,7 +462,7 @@ function renderUI(comp, year, currentRound, tabName) {
     }
   }
 
-  // Roster Table
+  // Populate Roster Table
   const rosterBody = document.getElementById("rosterTableBody");
   rosterBody.innerHTML = "";
   activeRoster.forEach((band, idx) => {
@@ -472,7 +481,7 @@ function renderUI(comp, year, currentRound, tabName) {
     rosterBody.appendChild(tr);
   });
 
-  // Leaderboard Table
+  // Populate Leaderboard Table
   const leaderboardBody = document.getElementById("leaderboardTableBody");
   leaderboardBody.innerHTML = "";
   const sorted = [...activeRoster].sort((a, b) => b.base - a.base);
@@ -487,7 +496,7 @@ function renderUI(comp, year, currentRound, tabName) {
         ${band.name} <span class="text-[10px] text-slate-500 font-mono font-normal">(${band.state})</span>
       </td>
       <td class="py-2.5 px-3 text-right font-mono font-bold text-emerald-400">
-        ${band.base > 0 ? band.base.toFixed(3) : "Pending"}
+        ${band.base > 0 ? band.base.toFixed(3) : "Recorded"}
       </td>
       <td class="py-2.5 px-3 text-right">
         ${band.classification ? `<span class="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono">${band.classification}</span>` : `<span class="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono">—</span>`}
