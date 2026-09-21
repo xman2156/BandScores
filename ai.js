@@ -37,6 +37,13 @@ function setCache(key, value, ttlHours = 24) {
 
 // ---------------------------------------------------------------------------
 // Low-level Gemini call (via Worker proxy, with retry + model fallback)
+//
+// Status handling:
+//   2xx             → success
+//   404             → model retired, skip to next model immediately
+//   429/502/503/504 → transient, retry same model up to 3x with backoff
+//   network err     → retry same model up to 3x with backoff
+//   400/401/403     → request-wide problem, abort everything
 // ---------------------------------------------------------------------------
 async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens = 800 } = {}) {
   if (!GEMINI_PROXY_URL || GEMINI_PROXY_URL.includes("YOUR-SUBDOMAIN")) {
@@ -62,52 +69,59 @@ async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens 
   let lastError = null;
 
   for (const model of modelsToTry) {
-    // Up to 3 attempts per model: immediate, +2s, +5s
-    const delays = [0, 2000, 5000];
+    const delays = [0, 2000, 5000]; // immediate, +2s, +5s
+    let skipModel = false;
 
-    for (let attempt = 0; attempt < delays.length; attempt++) {
+    for (let attempt = 0; attempt < delays.length && !skipModel; attempt++) {
       if (delays[attempt] > 0) {
         await new Promise(r => setTimeout(r, delays[attempt]));
       }
 
+      let res;
       try {
-        const res = await fetch(`${GEMINI_PROXY_URL}?model=${model}`, {
+        res = await fetch(`${GEMINI_PROXY_URL}?model=${model}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body)
         });
+      } catch (netErr) {
+        lastError = netErr;
+        console.warn(`[ai] ${model} attempt ${attempt + 1}: network error`);
+        continue; // retry same model
+      }
 
-        // Retry on transient errors; give up immediately on client errors
-        if (res.status === 503 || res.status === 502 || res.status === 504 || res.status === 429) {
-          const errText = await res.text();
-          lastError = new Error(`${model} → ${res.status}: ${errText.slice(0, 160)}`);
-          console.warn(`[ai] ${model} attempt ${attempt + 1} failed (${res.status}), retrying...`);
-          continue;
-        }
-
-        if (!res.ok) {
-          const errText = await res.text();
-          throw new Error(`AI proxy ${res.status}: ${errText.slice(0, 200)}`);
-        }
-
+      // --- Success ---
+      if (res.ok) {
         const data = await res.json();
         const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!text) throw new Error("Empty AI response");
-
         try {
           return JSON.parse(text);
         } catch {
           throw new Error("AI returned invalid JSON: " + text.slice(0, 150));
         }
-      } catch (err) {
-        lastError = err;
-        // Hard errors (JSON parse, 4xx) shouldn't be retried on this model
-        if (!/50\d|429|fetch/i.test(err.message)) throw err;
-        console.warn(`[ai] ${model} attempt ${attempt + 1} threw:`, err.message);
       }
-    }
 
-    console.warn(`[ai] ${model} exhausted — trying next model if available`);
+      // --- Non-2xx: read the body for the log, then decide ---
+      const errText = await res.text();
+      lastError = new Error(`${model} → ${res.status}: ${errText.slice(0, 160)}`);
+
+      // 404: model retired / doesn't exist. Skip to next model.
+      if (res.status === 404) {
+        console.warn(`[ai] ${model} is not available, skipping to next model`);
+        skipModel = true;
+        break;
+      }
+
+      // Transient: retry same model
+      if ([429, 502, 503, 504].includes(res.status)) {
+        console.warn(`[ai] ${model} attempt ${attempt + 1} got ${res.status}, retrying`);
+        continue;
+      }
+
+      // Anything else (400/401/403) — request-wide problem, no point trying other models
+      throw lastError;
+    }
   }
 
   throw new Error(`All models unavailable. Last: ${lastError?.message || "unknown"}`);
