@@ -35,7 +35,6 @@
 
       <!-- Controls: Round Toggle & Year Dropdown -->
       <div class="flex flex-wrap items-center gap-3">
-        <!-- Round Toggle Pill (Hidden for single-round events) -->
         <div id="roundToggleContainer" class="hidden flex items-center bg-slate-900 border border-slate-700 p-1 rounded-xl">
           <button id="btnRoundPrelims" onclick="switchRound('prelims')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition bg-indigo-600 text-white shadow">
             Prelims
@@ -45,17 +44,15 @@
           </button>
         </div>
 
-        <!-- Adaptive Season / Year Selector -->
         <div class="flex items-center gap-2">
           <label for="yearDropdown" class="text-xs text-slate-400 font-bold uppercase tracking-wider">Season:</label>
           <select id="yearDropdown" onchange="switchYear(this.value)" class="bg-slate-900 border border-slate-700 text-slate-200 font-bold text-xs rounded-xl px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
-            <!-- Populated dynamically based on Master Directory -->
           </select>
         </div>
       </div>
     </header>
 
-    <!-- FHC Spotlight Box (Dynamically shown only when FHC is competing in this round) -->
+    <!-- FHC Spotlight Box -->
     <section id="fhcSpotlightSection" class="hidden rounded-2xl bg-gradient-to-r from-blue-950/70 via-slate-900 to-indigo-950/80 border border-blue-500/30 p-6 shadow-2xl relative overflow-hidden">
       <div class="absolute -right-12 -bottom-12 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
@@ -70,21 +67,18 @@
         </div>
 
         <div class="flex flex-wrap gap-4 w-full lg:w-auto">
-          <!-- Stat 1: Official Score / Historical Mark -->
           <div class="stat-card flex-1 min-w-[140px]">
             <div id="statLabel1" class="stat-label">Score</div>
             <div id="fhcStatPeak" class="stat-value text-white">--</div>
             <div id="fhcStatPeakSub" class="stat-sub">Official Total</div>
           </div>
 
-          <!-- Stat 2: Standing / Projected Standing -->
           <div class="stat-card flex-1 min-w-[140px]">
             <div id="statLabel2" class="stat-label">Standing</div>
             <div id="fhcStatRank" class="stat-value text-indigo-400">--</div>
             <div id="fhcStatRankSub" class="stat-sub text-slate-400">Placement</div>
           </div>
 
-          <!-- Stat 3: Finals Benchmark (Shown ONLY for Prelims of Multi-Round Events) -->
           <div id="finalsBenchmarkCard" class="stat-card border-emerald-500/30 bg-emerald-950/20 flex-1 min-w-[140px] hidden">
             <div id="statLabel3" class="stat-label text-emerald-400">Finals Benchmark</div>
             <div id="fhcStatCutoff" class="stat-value text-emerald-300 font-mono">--</div>
@@ -97,7 +91,6 @@
     <!-- Main Dual Grid -->
     <main class="grid grid-cols-1 xl:grid-cols-2 gap-6">
 
-      <!-- Left Column: Performance Draw / Roster -->
       <section class="dashboard-tile">
         <div>
           <div class="flex items-center justify-between mb-3">
@@ -117,15 +110,13 @@
                 </tr>
               </thead>
               <tbody id="rosterTableBody" class="divide-y divide-slate-800/60 font-medium text-slate-300">
-                <!-- Injected via competition.js -->
               </tbody>
             </table>
           </div>
         </div>
-        <p class="tile-footer">Contest roster and performance sequence.</p>
+        <p class="tile-footer">Click any band to view caption breakdown.</p>
       </section>
 
-      <!-- Right Column: Official Results / Leaderboard -->
       <section class="dashboard-tile">
         <div>
           <div class="flex items-center justify-between mb-3">
@@ -146,16 +137,33 @@
                 </tr>
               </thead>
               <tbody id="leaderboardTableBody" class="divide-y divide-slate-800/60 font-medium text-slate-300">
-                <!-- Injected via competition.js -->
               </tbody>
             </table>
           </div>
         </div>
-        <p class="tile-footer">Scores direct from contest spreadsheets.</p>
+        <p class="tile-footer">Click any band to view caption breakdown.</p>
       </section>
 
     </main>
 
+  </div>
+
+  <!-- Band Detail Modal -->
+  <div id="bandModal" class="hidden fixed inset-0 z-50 items-center justify-center bg-slate-950/85 backdrop-blur-sm p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+      <div class="flex items-start justify-between p-5 border-b border-slate-800 sticky top-0 bg-slate-900 z-10">
+        <div>
+          <h3 id="modalBandName" class="text-lg font-black text-white tracking-tight"></h3>
+          <p id="modalBandMeta" class="text-xs text-slate-400 mt-0.5"></p>
+        </div>
+        <button id="modalCloseBtn" class="text-slate-400 hover:text-white transition p-1 -mr-1">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div id="modalBody" class="p-5 space-y-4">
+        <!-- Populated by JS -->
+      </div>
+    </div>
   </div>
 
   <script src="competition.js"></script>

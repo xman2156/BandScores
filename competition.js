@@ -10,6 +10,50 @@ let activeWorkbookData = {
   hasFinalsInSheet: false
 };
 
+// ---------------------------------------------------------------------------
+// Caption column layouts (indexed by the true trimmed data-row length)
+// ---------------------------------------------------------------------------
+const CAPTION_LAYOUTS = {
+  // BOA St. Louis: Name | MInd MEns MAvg | VInd VEns VAvg | GEM GEV GETot | F&T | Total | Rating | Class | CRank | ORank
+  16: {
+    musicInd: 1, musicEns: 2, musicTotal: 3,
+    visualInd: 4, visualEns: 5, visualTotal: 6,
+    geMusic: 7, geVisual: 8, geTotal: 9,
+    fieldTiming: 10, grandTotal: 11
+  },
+  // MEMC / Lafayette (2025+): Order | Name | MInd MEns MTot | VInd VEns VTot | GEM GEV GETot | GrandTotal
+  12: {
+    musicInd: 2, musicEns: 3, musicTotal: 4,
+    visualInd: 5, visualEns: 6, visualTotal: 7,
+    geMusic: 8, geVisual: 9, geTotal: 10,
+    grandTotal: 11
+  },
+  // Tiger Ambush: Order | Name | MInd MEns MTot | VEns VTot | GEM GEV GETot | GrandTotal
+  11: {
+    musicInd: 2, musicEns: 3, musicTotal: 4,
+    visualEns: 5, visualTotal: 6,
+    geMusic: 7, geVisual: 8, geTotal: 9,
+    grandTotal: 10
+  }
+};
+
+function detectLayout(row) {
+  const trimmed = [...row];
+  while (trimmed.length > 0 && trimmed[trimmed.length - 1] === "") trimmed.pop();
+  return CAPTION_LAYOUTS[trimmed.length] || null;
+}
+
+function extractCaptions(row, layout) {
+  const c = {};
+  if (!layout) return c;
+  for (const [key, idx] of Object.entries(layout)) {
+    if (idx >= row.length) continue;
+    const v = parseFloat(row[idx]);
+    if (!isNaN(v)) c[key] = v;
+  }
+  return c;
+}
+
 // Extract MM/DD/YY or MM/DD/YYYY from a tab name like "MEMC - 2026 - 9/12/26"
 function extractDateFromTab(tabName) {
   if (!tabName) return "";
@@ -20,7 +64,6 @@ function extractDateFromTab(tabName) {
   return `${m[1]}/${m[2]}/${y}`;
 }
 
-// Parse "M/D/YY" or "M/D/YYYY" or "YYYY-MM-DD" into a Date at end-of-day
 function parseLocalDate(dateStr, fallbackYear) {
   if (!dateStr) return new Date(`${fallbackYear}-10-31T23:59:59`);
   const parts = dateStr.trim().split(/[-/]/);
@@ -75,7 +118,7 @@ async function fetchMasterDirectory() {
 }
 
 // =============================================================================
-// CSV Grid Fetcher (CSV preserves the initial banner row; JSON does not)
+// CSV Grid Fetcher
 // =============================================================================
 async function fetchSheetGrid(sheetId, sheetName) {
   const params = sheetName ? `&sheet=${encodeURIComponent(sheetName)}` : "";
@@ -89,7 +132,7 @@ async function fetchSheetGrid(sheetId, sheetName) {
 }
 
 // =============================================================================
-// Direct Cell Pattern Parser
+// Direct Cell Pattern Parser — with caption extraction
 // =============================================================================
 function parseFullWorkbookCSV(rows) {
   let currentBlock = "Prelims";
@@ -97,6 +140,7 @@ function parseFullWorkbookCSV(rows) {
   let inlineClassColIdx = -1;
   let classIndex = -1;
   let sequence = null;
+  let sheetLayout = null;   // set on the first data row we see
   let prelims = [];
   let finals = [];
   let detectedFinals = false;
@@ -192,12 +236,14 @@ function parseFullWorkbookCSV(rows) {
       continue;
     }
 
+    // --- Total score ---
     let scoreVal = 0.0;
     for (let c = row.length - 1; c >= 0; c--) {
       const val = parseFloat(row[c]);
       if (!isNaN(val) && val >= 35.0 && val <= 100.0) { scoreVal = val; break; }
     }
 
+    // --- Name ---
     let candidateName = "";
     for (let c = 0; c < Math.min(row.length, 4); c++) {
       const cell = row[c];
@@ -211,13 +257,21 @@ function parseFullWorkbookCSV(rows) {
     }
     if (!candidateName) continue;
 
+    // --- Detect layout on the first data row ---
+    if (!sheetLayout) sheetLayout = detectLayout(row);
+
+    // --- Dedup ---
     const targetList = currentBlock === "Finals" ? finals : prelims;
     const existing = targetList.find(b => b.name.toLowerCase() === candidateName.toLowerCase());
     if (existing) {
-      if (scoreVal > 0 && existing.base === 0) existing.base = scoreVal;
+      if (scoreVal > 0 && existing.base === 0) {
+        existing.base = scoreVal;
+        existing.captions = extractCaptions(row, sheetLayout);
+      }
       continue;
     }
 
+    // --- Classification ---
     let finalClass = "";
     if (inlineClassColIdx !== -1 && row[inlineClassColIdx] && row[inlineClassColIdx].length > 0) {
       const val = row[inlineClassColIdx].trim();
@@ -231,7 +285,8 @@ function parseFullWorkbookCSV(rows) {
       classification: finalClass,
       round: currentBlock,
       state: "MO",
-      base: scoreVal
+      base: scoreVal,
+      captions: extractCaptions(row, sheetLayout)
     });
   }
 
@@ -274,7 +329,6 @@ async function loadCompetitionView(eventKey, selectedYear, selectedRound) {
   const rosterBody = document.getElementById("rosterTableBody");
   const leaderboardBody = document.getElementById("leaderboardTableBody");
 
-  // --- 1. Resolve directory ---
   let allEntries;
   try {
     allEntries = await fetchMasterDirectory();
@@ -301,7 +355,6 @@ async function loadCompetitionView(eventKey, selectedYear, selectedRound) {
     return;
   }
 
-  // --- 2. Populate season dropdown ---
   const uniqueYears = [...new Set(contestSeasons.map(c => c.year))].filter(Boolean).sort((a, b) => b - a);
   const yearSelect = document.getElementById("yearDropdown");
 
@@ -319,14 +372,12 @@ async function loadCompetitionView(eventKey, selectedYear, selectedRound) {
 
   let targetEntry = contestSeasons.find(c => c.year === selectedYear) || contestSeasons[0];
 
-  // Compute isPast from the ACTUAL contest date, not just the year
   const contestDateObj = parseLocalDate(targetEntry.date, targetEntry.year);
   targetEntry.isPast = contestDateObj < new Date();
 
   titleEl.textContent = `${targetEntry.name} (${selectedYear})`;
   subtitleEl.textContent = `Loading ${selectedYear} scores from Google Drive...`;
 
-  // --- 3. Fetch + parse the contest sheet ---
   let targetTab = targetEntry.prelimsTab;
   const hasSeparateTabs = Boolean(targetEntry.finalsTab);
 
@@ -361,10 +412,145 @@ async function loadCompetitionView(eventKey, selectedYear, selectedRound) {
 }
 
 // =============================================================================
+// Band Detail Modal
+// =============================================================================
+let currentModalRoster = [];
+
+function openBandModal(band, allBands) {
+  const modal = document.getElementById("bandModal");
+  const nameEl = document.getElementById("modalBandName");
+  const metaEl = document.getElementById("modalBandMeta");
+  const bodyEl = document.getElementById("modalBody");
+  if (!modal || !nameEl || !metaEl || !bodyEl) return;
+
+  const sorted = [...allBands].sort((a, b) => b.base - a.base);
+  const rank = sorted.findIndex(b => b.name === band.name) + 1;
+
+  nameEl.textContent = band.name;
+  metaEl.textContent = `${band.classification || "Unclassified"} • Rank #${rank} of ${allBands.length} • ${band.round}`;
+
+  const c = band.captions || {};
+  const hasCaptions = Object.keys(c).length > 0;
+
+  let html = `
+    <div class="grid grid-cols-2 gap-3">
+      <div class="p-3 bg-slate-950/60 border border-slate-800 rounded-xl">
+        <div class="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Total Score</div>
+        <div class="text-2xl font-black text-emerald-400 font-mono mt-1">${band.base > 0 ? band.base.toFixed(3) : "—"}</div>
+      </div>
+      <div class="p-3 bg-slate-950/60 border border-slate-800 rounded-xl">
+        <div class="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Placement</div>
+        <div class="text-2xl font-black text-indigo-400 font-mono mt-1">#${rank}</div>
+      </div>
+    </div>
+  `;
+
+  if (!hasCaptions) {
+    html += `
+      <div class="border border-dashed border-slate-700 rounded-xl p-6 text-center text-slate-500 text-xs font-mono">
+        No caption data available for this band.
+      </div>
+    `;
+  } else {
+    const groups = [
+      {
+        title: "Music Performance", color: "emerald",
+        items: [
+          { label: "Individual", val: c.musicInd },
+          { label: "Ensemble",   val: c.musicEns },
+          { label: "Total",      val: c.musicTotal, bold: true }
+        ]
+      },
+      {
+        title: "Visual Performance", color: "pink",
+        items: [
+          { label: "Individual", val: c.visualInd },
+          { label: "Ensemble",   val: c.visualEns },
+          { label: "Total",      val: c.visualTotal, bold: true }
+        ]
+      },
+      {
+        title: "General Effect", color: "indigo",
+        items: [
+          { label: "Music",  val: c.geMusic },
+          { label: "Visual", val: c.geVisual },
+          { label: "Total",  val: c.geTotal, bold: true }
+        ]
+      }
+    ];
+
+    const colorMap = {
+      emerald: { text: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20" },
+      pink:    { text: "text-pink-400",    bg: "bg-pink-500/10",    border: "border-pink-500/20" },
+      indigo:  { text: "text-indigo-400",  bg: "bg-indigo-500/10",  border: "border-indigo-500/20" },
+      amber:   { text: "text-amber-400",   bg: "bg-amber-500/10",   border: "border-amber-500/20" }
+    };
+
+    groups.forEach(group => {
+      const present = group.items.filter(it => it.val != null);
+      if (present.length === 0) return;
+      const cm = colorMap[group.color];
+
+      html += `
+        <div class="border border-slate-800 rounded-xl overflow-hidden">
+          <div class="px-4 py-2 ${cm.bg} border-b ${cm.border}">
+            <span class="text-xs font-bold ${cm.text} uppercase tracking-wider">${group.title}</span>
+          </div>
+          <div class="divide-y divide-slate-800/60">
+            ${present.map(it => `
+              <div class="flex items-center justify-between px-4 py-2 text-xs">
+                <span class="${it.bold ? 'font-bold text-slate-200' : 'text-slate-400'}">${it.label}</span>
+                <span class="font-mono ${it.bold ? 'font-bold text-white' : 'text-slate-300'}">${it.val.toFixed(3)}</span>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      `;
+    });
+
+    if (c.fieldTiming != null) {
+      const cm = colorMap.amber;
+      html += `
+        <div class="border border-slate-800 rounded-xl overflow-hidden">
+          <div class="px-4 py-2 ${cm.bg} border-b ${cm.border}">
+            <span class="text-xs font-bold ${cm.text} uppercase tracking-wider">Field & Timing</span>
+          </div>
+          <div class="flex items-center justify-between px-4 py-2 text-xs">
+            <span class="text-slate-400">Score</span>
+            <span class="font-mono text-slate-300">${c.fieldTiming.toFixed(3)}</span>
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  html += `
+    <div class="border border-dashed border-slate-700 rounded-xl p-5 text-center">
+      <div class="inline-flex items-center gap-2 text-slate-500 text-xs font-mono">
+        <i data-lucide="sparkles" class="w-4 h-4"></i>
+        AI Review & Projection — Coming Soon
+      </div>
+    </div>
+  `;
+
+  bodyEl.innerHTML = html;
+  modal.classList.remove("hidden");
+  modal.classList.add("flex");
+  currentModalRoster = allBands;
+  lucide.createIcons();
+}
+
+function closeBandModal() {
+  const modal = document.getElementById("bandModal");
+  if (!modal) return;
+  modal.classList.add("hidden");
+  modal.classList.remove("flex");
+}
+
+// =============================================================================
 // DOM Renderer
 // =============================================================================
 function renderUI(comp, year, currentRound, tabName) {
-  // Use the pre-computed isPast flag from loadCompetitionView
   const isPast = comp.isPast === true;
 
   const roundContainer = document.getElementById("roundToggleContainer");
@@ -456,12 +642,15 @@ function renderUI(comp, year, currentRound, tabName) {
     }
   }
 
+  // ---- Roster table ----
   const rosterBody = document.getElementById("rosterTableBody");
   rosterBody.innerHTML = "";
   activeRoster.forEach((band, idx) => {
     const isFHC = band.name.toLowerCase().includes("howell central");
     const tr = document.createElement("tr");
-    tr.className = isFHC ? "bg-blue-950/40 border-l-2 border-blue-400" : "hover:bg-slate-900/60 transition";
+    tr.className = isFHC
+      ? "bg-blue-950/40 border-l-2 border-blue-400 cursor-pointer hover:bg-blue-950/60 transition"
+      : "hover:bg-slate-900/60 transition cursor-pointer";
     tr.innerHTML = `
       <td class="py-2.5 px-3 font-mono text-slate-500">${idx + 1}</td>
       <td class="py-2.5 px-3 ${isFHC ? 'text-blue-300 font-bold flex items-center gap-1.5' : 'text-slate-200'}">
@@ -471,9 +660,11 @@ function renderUI(comp, year, currentRound, tabName) {
       </td>
       <td class="py-2.5 px-3 text-right text-slate-400 font-mono text-[11px]">${band.classification || '—'}</td>
     `;
+    tr.onclick = () => openBandModal(band, activeRoster);
     rosterBody.appendChild(tr);
   });
 
+  // ---- Leaderboard table ----
   const leaderboardBody = document.getElementById("leaderboardTableBody");
   leaderboardBody.innerHTML = "";
   const sorted = [...activeRoster].sort((a, b) => b.base - a.base);
@@ -481,7 +672,9 @@ function renderUI(comp, year, currentRound, tabName) {
     const isFHC = band.name.toLowerCase().includes("howell central");
     const hasScore = band.base > 0;
     const tr = document.createElement("tr");
-    tr.className = isFHC ? "bg-blue-950/40 border-l-2 border-blue-400" : "hover:bg-slate-900/50 transition";
+    tr.className = isFHC
+      ? "bg-blue-950/40 border-l-2 border-blue-400 cursor-pointer hover:bg-blue-950/60 transition"
+      : "hover:bg-slate-900/50 transition cursor-pointer";
     tr.innerHTML = `
       <td class="py-2.5 px-3 font-mono font-bold ${idx < 3 ? 'text-amber-400' : 'text-slate-400'}">#${idx + 1}</td>
       <td class="py-2.5 px-3 ${isFHC ? 'text-blue-300 font-bold' : 'text-white'}">
@@ -494,6 +687,7 @@ function renderUI(comp, year, currentRound, tabName) {
         ${band.classification ? `<span class="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono">${band.classification}</span>` : `<span class="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono">—</span>`}
       </td>
     `;
+    tr.onclick = () => openBandModal(band, activeRoster);
     leaderboardBody.appendChild(tr);
   });
 
@@ -512,6 +706,20 @@ window.addEventListener("popstate", () => {
 
 document.addEventListener("DOMContentLoaded", () => {
   lucide.createIcons();
+
+  // Modal close handlers
+  const modal = document.getElementById("bandModal");
+  const closeBtn = document.getElementById("modalCloseBtn");
+  if (closeBtn) closeBtn.addEventListener("click", closeBandModal);
+  if (modal) {
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) closeBandModal();
+    });
+  }
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeBandModal();
+  });
+
   const { event, year, round } = getUrlParams();
   loadCompetitionView(event, year, round);
 });
