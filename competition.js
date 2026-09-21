@@ -121,19 +121,44 @@ function parseFullWorkbookCSV(rawCsvText) {
     "recap", "summary", "stats", "timing", "division", "penalty", "rank", "place"
   ];
 
+  // Robust class banner detector — accepts many text variants
+  function detectBanner(row) {
+    for (const rawCell of row) {
+      const c = (rawCell || "").trim().toLowerCase();
+      if (!c || c.length > 40) continue;
+      // Never treat these as banners
+      if (c.includes("judge") || c.includes("panel") ||
+          c.includes("rank")  || c.includes("rating") ||
+          c.includes("school name")) continue;
+
+      // Class AAAA / AAA / AA / A (with or without "class " prefix, with or without "4a" style)
+      if (/^class\s*(aaaa|4a)$/.test(c) || /^(aaaa|4a)$/.test(c)) return "Class AAAA";
+      if (/^class\s*(aaa|3a)$/.test(c)  || /^(aaa|3a)$/.test(c))  return "Class AAA";
+      if (/^class\s*(aa|2a)$/.test(c)   || /^(aa|2a)$/.test(c))   return "Class AA";
+      if (/^class\s*(a|1a)$/.test(c))                              return "Class A";
+
+      // Divisions
+      if (/^gold(\s+division)?$/.test(c))  return "Gold Division";
+      if (/^black(\s+division)?$/.test(c)) return "Black Division";
+      if (/^white(\s+division)?$/.test(c)) return "White Division";
+    }
+    return "";
+  }
+
   for (let i = 0; i < rows.length; i++) {
     const rawRow = rows[i] || [];
     const row = rawRow.map(c => (c || "").toString().trim().replace(/\u00a0/g, " "));
-
-    // Skip blank rows
     if (row.every(c => c === "")) continue;
 
     const line = row.join(" ").toLowerCase();
 
-    // 1. Detect Finals Block Switch
-    if (line.includes("finals") && !line.includes("field & timing")) {
+    // --- Block switches ---
+    // Only treat as finals switch if we're not looking at a BOA header row
+    if (line.includes("finals") &&
+        !line.includes("field & timing") &&
+        !line.includes("prelims")) {          // <-- new guard
       currentBlock = "Finals";
-      currentClass = ""; // Finals are open-class
+      currentClass = "";
       detectedFinals = true;
       continue;
     }
@@ -142,53 +167,36 @@ function parseFullWorkbookCSV(rawCsvText) {
       continue;
     }
 
-    // 2. BOA Inline Column Detection
+    // --- BOA inline class column detection ---
     const lowerRow = row.map(c => c.toLowerCase());
-    if (lowerRow.includes("class") && (lowerRow.includes("rating") || lowerRow.includes("music performance") || lowerRow.includes("field & timing"))) {
+    const hasClassCol = lowerRow.includes("class");
+    const hasBoaHeader = lowerRow.includes("music performance") ||
+                         lowerRow.includes("field & timing");
+    if (hasClassCol && hasBoaHeader) {
       inlineClassColIdx = lowerRow.indexOf("class");
       continue;
     }
 
-    // 3. Scan Row for Section Class Banners
-    // Directly tests each non-empty cell in the row
-    let bannerFound = "";
-    for (let c = 0; c < row.length; c++) {
-      const cell = row[c].toLowerCase();
-      if (!cell) continue;
-
-      if (cell === "class aaaa" || cell === "class 4a" || cell === "4a") {
-        bannerFound = "Class AAAA"; break;
-      } else if (cell === "class aaa" || cell === "class 3a" || cell === "3a") {
-        bannerFound = "Class AAA"; break;
-      } else if (cell === "class aa" || cell === "class 2a" || cell === "2a") {
-        bannerFound = "Class AA"; break;
-      } else if (cell === "class a" || cell === "class 1a" || cell === "1a") {
-        bannerFound = "Class A"; break;
-      } else if (cell === "gold" || cell === "gold division" || cell.includes("gold division")) {
-        bannerFound = "Gold Division"; break;
-      } else if (cell === "black" || cell === "black division" || cell.includes("black division")) {
-        bannerFound = "Black Division"; break;
-      } else if (cell === "white" || cell === "white division" || cell.includes("white division")) {
-        bannerFound = "White Division"; break;
-      }
+    // --- Class banner detection (runs BEFORE all skip checks) ---
+    const banner = detectBanner(row);
+    if (banner) {
+      currentClass = banner;
+      continue;
     }
 
-    if (bannerFound) {
-      currentClass = bannerFound;
-      continue; // Move to next row
-    }
-
-    // 4. Skip Judge Panels, Caption Breakdown Headers, and Award Summaries
+    // --- Skip non-data rows ---
     if (
       line.includes("judge panel") ||
       (line.includes("individual") && line.includes("ensemble")) ||
       line.includes("caption awards") ||
-      (line.includes("outstanding") && !row.some(c => parseFloat(c) >= 35.0))
+      line.includes("oustanding") ||
+      line.includes("outstanding") ||
+      (line.includes("award") && !row.some(c => parseFloat(c) >= 35.0))
     ) {
       continue;
     }
 
-    // 5. Extract Total Score
+    // --- Score ---
     let scoreVal = 0.0;
     for (let c = row.length - 1; c >= 0; c--) {
       const val = parseFloat(row[c]);
@@ -198,55 +206,51 @@ function parseFullWorkbookCSV(rawCsvText) {
       }
     }
 
-    // 6. Extract Candidate School Name (Checks first 4 columns)
+    // --- Name ---
     let candidateName = "";
     for (let c = 0; c < Math.min(row.length, 4); c++) {
       const cell = row[c];
       const cellLower = cell.toLowerCase();
-
       if (cell.length > 2 && isNaN(Number(cell))) {
         const isForbidden = forbiddenWords.some(w => cellLower === w || cellLower.startsWith(w + " "));
         const isOrdinal = /^\d+(st|nd|rd|th)\b/i.test(cellLower);
-        const isJudge = cellLower.startsWith("b.") || cellLower.startsWith("s.") || cellLower.startsWith("r.") || cellLower.startsWith("j.") || cellLower.startsWith("c.") || cellLower.startsWith("m.") || cellLower.startsWith("a.");
-
+        const isJudge = /^[a-z]\.\s/.test(cellLower) || /^[a-z]\.$/.test(cellLower);
         if (!isForbidden && !isOrdinal && !isJudge) {
           candidateName = cell;
           break;
         }
       }
     }
-
     if (!candidateName) continue;
 
-    // Deduplicate: If this school was already added to this block, don't re-add from award rows
     const targetList = currentBlock === "Finals" ? finals : prelims;
     const existingEntry = targetList.find(b => b.name.toLowerCase() === candidateName.toLowerCase());
     if (existingEntry) {
-      if (scoreVal > 0 && existingEntry.base === 0) {
-        existingEntry.base = scoreVal;
-      }
+      if (scoreVal > 0 && existingEntry.base === 0) existingEntry.base = scoreVal;
       continue;
     }
 
-    // 7. Assign Classification
+    // --- Class assignment ---
     let finalClass = "";
     if (inlineClassColIdx !== -1 && row[inlineClassColIdx] && row[inlineClassColIdx].length > 0) {
       const val = row[inlineClassColIdx].trim();
       finalClass = val.toLowerCase().startsWith("class") ? val : `Class ${val}`;
-    } else if (currentBlock === "Prelims") {
+    } else if (currentClass) {
       finalClass = currentClass;
     }
 
-    const bandObj = {
+    targetList.push({
       name: candidateName,
       classification: finalClass,
       round: currentBlock,
       state: "MO",
       base: scoreVal
-    };
-
-    targetList.push(bandObj);
+    });
   }
+
+  console.log("[Parser] prelims:", prelims.length, "finals:", finals.length);
+  console.log("[Parser] classes found:", [...new Set(prelims.map(b => b.classification))]);
+  console.log("[Parser] sample:", prelims[0]);
 
   return { prelims, finals, hasFinalsInSheet: detectedFinals };
 }
