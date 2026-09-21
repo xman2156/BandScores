@@ -4,59 +4,6 @@
 
 const MASTER_INDEX_SPREADSHEET_ID = "106s_uuX5YOXAS_cXPCqj4HaO69DK8wHMWGevKUhTWd0";
 
-const fallbackMasterDirectory = [
-  // 2026 Season
-  { name: "Metro-East Marching Classic (MEMC)", key: "memc", loc: "O'Fallon, IL", year: "2026", date: "9/12/2026", id: "1yB6emCUzTJMDxpFFtxnZrCPQ9LaiLDU85xoWH5hSOjo" },
-  { name: "Tiger Ambush Classic", key: "tigerambush", loc: "Edwardsville, IL", year: "2026", date: "9/19/2026", id: "1-UiYEzZIc0wF-fGSwi4uQZ92Y-itl7LGE4SBK2XKJOc" },
-  { name: "Broken Arrow Invitational", key: "brokenarrow", loc: "Broken Arrow, OK", year: "2026", date: "9/19/2026", id: "1iatqDcFWffwrRzMKMDXUy5hAizRhfxYqGFSmOpzlQ7s" },
-  { name: "Deer Creek Invitational", key: "deercreek", loc: "Edmond, OK", year: "2026", date: "9/19/2026", id: "1XTo8j1gzAYEbnaIYbGSjWaKMCqCXTM484-6Q29Gcy_k" },
-  { name: "Lafayette Contest of Champions", key: "lafayette", loc: "Wildwood, MO", year: "2026", date: "9/26/2026", id: "10e1ghOqkzOyNt7lPOC_TRiw_WWPU2cIHVzxUK_YCPd4" },
-  { name: "Renegade Review", key: "renegade", loc: "Owasso, OK", year: "2026", date: "10/10/2026", id: "1aOD7KDcLPMYkFEkxQUcoYY48amnPMWs01s96t6yNqJo" },
-  { name: "River City Showcase", key: "rivercity", loc: "Washington, MO", year: "2026", date: "10/10/2026", id: "1FSNl3icY0eNV0oJO5QHYfBUPt6Q9wCRW6rFQEm4VbN4" },
-  { name: "BOA St. Louis Super Regional", key: "boastl", loc: "St. Louis, MO", year: "2026", date: "10/23/2026", id: "1ipg6FG-omTfFcDLieyOO1wQbHfWLJIG1aiZAS9bZJh4" },
-
-  // 2025 Season
-  { name: "Metro-East Marching Classic (MEMC)", key: "memc", loc: "O'Fallon, IL", year: "2025", date: "9/13/2025", id: "1yB6emCUzTJMDxpFFtxnZrCPQ9LaiLDU85xoWH5hSOjo" },
-  { name: "Tiger Ambush Classic", key: "tigerambush", loc: "Edwardsville, IL", year: "2025", date: "9/20/2025", id: "1-UiYEzZIc0wF-fGSwi4uQZ92Y-itl7LGE4SBK2XKJOc" },
-  { name: "Broken Arrow Invitational", key: "brokenarrow", loc: "Broken Arrow, OK", year: "2025", date: "9/20/2025", id: "1iatqDcFWffwrRzMKMDXUy5hAizRhfxYqGFSmOpzlQ7s" },
-  { name: "Deer Creek Invitational", key: "deercreek", loc: "Edmond, OK", year: "2025", date: "9/20/2025", id: "1XTo8j1gzAYEbnaIYbGSjWaKMCqCXTM484-6Q29Gcy_k" },
-  { name: "Lafayette Contest of Champions", key: "lafayette", loc: "Wildwood, MO", year: "2025", date: "9/20/2025", id: "10e1ghOqkzOyNt7lPOC_TRiw_WWPU2cIHVzxUK_YCPd4" },
-  { name: "Renegade Review", key: "renegade", loc: "Owasso, OK", year: "2025", date: "10/11/2025", id: "1aOD7KDcLPMYkFEkxQUcoYY48amnPMWs01s96t6yNqJo" },
-  { name: "River City Showcase", key: "rivercity", loc: "Washington, MO", year: "2025", date: "10/11/2025", id: "1FSNl3icY0eNV0oJO5QHYfBUPt6Q9wCRW6rFQEm4VbN4" },
-  { name: "BOA St. Louis Super Regional", key: "boastl", loc: "St. Louis, MO", year: "2025", date: "10/17/2025", id: "1ipg6FG-omTfFcDLieyOO1wQbHfWLJIG1aiZAS9bZJh4" },
-
-  // 2024 Season
-  { name: "Metro-East Marching Classic (MEMC)", key: "memc", loc: "O'Fallon, IL", year: "2024", date: "9/7/2024", id: "1yB6emCUzTJMDxpFFtxnZrCPQ9LaiLDU85xoWH5hSOjo" },
-  { name: "Tiger Ambush Classic", key: "tigerambush", loc: "Edwardsville, IL", year: "2024", date: "9/21/2024", id: "1-UiYEzZIc0wF-fGSwi4uQZ92Y-itl7LGE4SBK2XKJOc" },
-  { name: "Broken Arrow Invitational", key: "brokenarrow", loc: "Broken Arrow, OK", year: "2024", date: "10/5/2024", id: "1iatqDcFWffwrRzMKMDXUy5hAizRhfxYqGFSmOpzlQ7s" },
-  { name: "Deer Creek Invitational", key: "deercreek", loc: "Edmond, OK", year: "2024", date: "9/21/2024", id: "1XTo8j1gzAYEbnaIYbGSjWaKMCqCXTM484-6Q29Gcy_k" },
-  { name: "Lafayette Contest of Champions", key: "lafayette", loc: "Wildwood, MO", year: "2024", date: "9/28/2024", id: "10e1ghOqkzOyNt7lPOC_TRiw_WWPU2cIHVzxUK_YCPd4" },
-  { name: "Renegade Review", key: "renegade", loc: "Owasso, OK", year: "2024", date: "10/12/2024", id: "1aOD7KDcLPMYkFEkxQUcoYY48amnPMWs01s96t6yNqJo" },
-  { name: "BOA St. Louis Super Regional", key: "boastl", loc: "St. Louis, MO", year: "2024", date: "10/25/2024", id: "1ipg6FG-omTfFcDLieyOO1wQbHfWLJIG1aiZAS9bZJh4" },
-
-  // 2023 Season
-  { name: "Metro-East Marching Classic (MEMC)", key: "memc", loc: "O'Fallon, IL", year: "2023", date: "9/9/2023", id: "1yB6emCUzTJMDxpFFtxnZrCPQ9LaiLDU85xoWH5hSOjo" },
-  { name: "Tiger Ambush Classic", key: "tigerambush", loc: "Edwardsville, IL", year: "2023", date: "9/16/2023", id: "1-UiYEzZIc0wF-fGSwi4uQZ92Y-itl7LGE4SBK2XKJOc" },
-  { name: "Broken Arrow Invitational", key: "brokenarrow", loc: "Broken Arrow, OK", year: "2023", date: "10/7/2023", id: "1iatqDcFWffwrRzMKMDXUy5hAizRhfxYqGFSmOpzlQ7s" },
-  { name: "Deer Creek Invitational", key: "deercreek", loc: "Edmond, OK", year: "2023", date: "9/23/2023", id: "1XTo8j1gzAYEbnaIYbGSjWaKMCqCXTM484-6Q29Gcy_k" },
-  { name: "Lafayette Contest of Champions", key: "lafayette", loc: "Wildwood, MO", year: "2023", date: "9/30/2023", id: "10e1ghOqkzOyNt7lPOC_TRiw_WWPU2cIHVzxUK_YCPd4" },
-  { name: "Renegade Review", key: "renegade", loc: "Owasso, OK", year: "2023", date: "10/14/2023", id: "1aOD7KDcLPMYkFEkxQUcoYY48amnPMWs01s96t6yNqJo" },
-  { name: "BOA St. Louis Super Regional", key: "boastl", loc: "St. Louis, MO", year: "2023", date: "10/27/2023", id: "1ipg6FG-omTfFcDLieyOO1wQbHfWLJIG1aiZAS9bZJh4" },
-
-  // 2022 Season (Guaranteed 2022 Data)
-  { name: "Tiger Ambush Classic", key: "tigerambush", loc: "Edwardsville, IL", year: "2022", date: "9/17/2022", id: "1-UiYEzZIc0wF-fGSwi4uQZ92Y-itl7LGE4SBK2XKJOc" },
-  { name: "Broken Arrow Invitational", key: "brokenarrow", loc: "Broken Arrow, OK", year: "2022", date: "10/1/2022", id: "1iatqDcFWffwrRzMKMDXUy5hAizRhfxYqGFSmOpzlQ7s" },
-  { name: "Lafayette Contest of Champions", key: "lafayette", loc: "Wildwood, MO", year: "2022", date: "9/24/2022", id: "10e1ghOqkzOyNt7lPOC_TRiw_WWPU2cIHVzxUK_YCPd4" },
-  { name: "Renegade Review", key: "renegade", loc: "Owasso, OK", year: "2022", date: "10/8/2022", id: "1aOD7KDcLPMYkFEkxQUcoYY48amnPMWs01s96t6yNqJo" },
-  { name: "BOA St. Louis Super Regional", key: "boastl", loc: "St. Louis, MO", year: "2022", date: "10/14/2022", id: "1ipg6FG-omTfFcDLieyOO1wQbHfWLJIG1aiZAS9bZJh4" },
-
-  // 2021 Season
-  { name: "Metro-East Marching Classic (MEMC)", key: "memc", loc: "O'Fallon, IL", year: "2021", date: "9/11/2021", id: "1yB6emCUzTJMDxpFFtxnZrCPQ9LaiLDU85xoWH5hSOjo" },
-  { name: "Tiger Ambush Classic", key: "tigerambush", loc: "Edwardsville, IL", year: "2021", date: "9/18/2021", id: "1-UiYEzZIc0wF-fGSwi4uQZ92Y-itl7LGE4SBK2XKJOc" },
-  { name: "Renegade Review", key: "renegade", loc: "Owasso, OK", year: "2021", date: "10/9/2021", id: "1aOD7KDcLPMYkFEkxQUcoYY48amnPMWs01s96t6yNqJo" },
-  { name: "BOA St. Louis Super Regional", key: "boastl", loc: "St. Louis, MO", year: "2021", date: "10/22/2021", id: "1ipg6FG-omTfFcDLieyOO1wQbHfWLJIG1aiZAS9bZJh4" }
-];
-
 let allMasterRows = [];
 
 function parseLocalDate(dateStr, fallbackYear) {
@@ -102,71 +49,26 @@ function formatSafeDate(dateStr) {
 async function fetchDirectorySheetData() {
   if (allMasterRows.length > 0) return allMasterRows;
 
-  try {
-    const endpoint = `https://docs.google.com/spreadsheets/d/${MASTER_INDEX_SPREADSHEET_ID}/gviz/tq?tqx=out:csv&_cb=${Date.now()}`;
-    const res = await fetch(endpoint);
-    const csv = await res.text();
-    const parsed = Papa.parse(csv, { header: true, skipEmptyLines: true });
+  const endpoint = `https://docs.google.com/spreadsheets/d/${MASTER_INDEX_SPREADSHEET_ID}/gviz/tq?tqx=out:csv&_cb=${Date.now()}`;
+  const res = await fetch(endpoint);
+  if (!res.ok) throw new Error(`Master directory HTTP ${res.status}`);
 
-    if (parsed.data && parsed.data.length > 0) {
-      allMasterRows = parsed.data.map(r => ({
-        name: r["Contest Name"] || r["Name"] || "Unnamed Contest",
-        key: (r["Event Key"] || r["eventKey"] || r["Key"] || "").trim().toLowerCase(),
-        loc: r["Location"] || r["City"] || "Location Pending",
-        year: (r["Year"] || "").toString().trim(),
-        date: (r["Date"] || "").trim(),
-        id: (r["Spreadsheet ID"] || r["spreadsheetId"] || "").trim()
-      })).filter(c => c.key && c.year);
-    }
-  } catch (err) {
-    console.warn("Using fallback Master Directory list:", err);
-  }
+  const csv = await res.text();
+  const parsed = Papa.parse(csv, { header: true, skipEmptyLines: true });
+
+  allMasterRows = (parsed.data || []).map(r => ({
+    name: r["Contest Name"] || r["Name"] || "Unnamed Contest",
+    key: (r["Event Key"] || r["eventKey"] || r["Key"] || "").trim().toLowerCase(),
+    loc: r["Location"] || r["City"] || "Location Pending",
+    year: (r["Year"] || "").toString().trim(),
+    date: (r["Date"] || "").trim(),
+    id: (r["Spreadsheet ID"] || r["spreadsheetId"] || "").trim()
+  })).filter(c => c.key && c.year);
 
   if (allMasterRows.length === 0) {
-    allMasterRows = fallbackMasterDirectory;
+    throw new Error("Master directory returned 0 valid rows — check column headers");
   }
-
   return allMasterRows;
-}
-
-// Injects 2022 into whatever element exists in competitions.html
-function forcePopulate2022InUI(selectedYear) {
-  const years = ["all", "2026", "2025", "2024", "2023", "2022", "2021"];
-
-  // 1. Target any <select> on the page
-  const selectElements = document.querySelectorAll("select");
-  selectElements.forEach(sel => {
-    // Only update if it contains year-like options
-    const html = sel.innerHTML.toLowerCase();
-    if (html.includes("2026") || html.includes("season") || sel.id.includes("year") || sel.id.includes("season")) {
-      sel.innerHTML = `<option value="all">All Seasons (2021-2026)</option>`;
-      years.filter(y => y !== "all").forEach(y => {
-        const opt = document.createElement("option");
-        opt.value = y;
-        opt.textContent = `${y} Season`;
-        if (y === selectedYear.toString()) opt.selected = true;
-        sel.appendChild(opt);
-      });
-      // Attach listener
-      sel.onchange = (e) => filterByYear(e.target.value);
-    }
-  });
-
-  // 2. Target any container of season filter buttons
-  const buttonContainers = document.querySelectorAll(".season-filters, #seasonFilterGroup, [data-season-filters]");
-  buttonContainers.forEach(container => {
-    container.innerHTML = "";
-    years.forEach(y => {
-      const btn = document.createElement("button");
-      btn.onclick = () => filterByYear(y);
-      btn.textContent = y === "all" ? "All Seasons" : y;
-      const isActive = y === selectedYear.toString();
-      btn.className = isActive
-        ? "px-3 py-1.5 rounded-lg text-xs font-bold transition bg-indigo-600 text-white shadow"
-        : "px-3 py-1.5 rounded-lg text-xs font-bold transition bg-slate-900 border border-slate-800 text-slate-400 hover:text-white";
-      container.appendChild(btn);
-    });
-  });
 }
 
 async function loadCompetitionsDirectory(selectedYear = "2026") {
@@ -175,10 +77,25 @@ async function loadCompetitionsDirectory(selectedYear = "2026") {
 
   container.innerHTML = `<div class="col-span-full py-12 text-center text-slate-400 font-mono text-xs">Syncing active contests...</div>`;
 
-  const rows = await fetchDirectorySheetData();
-  forcePopulate2022InUI(selectedYear);
+  // --- Fetch directory ---
+  let rows;
+  try {
+    rows = await fetchDirectorySheetData();
+  } catch (err) {
+    console.error("[loadCompetitionsDirectory] Directory fetch failed:", err);
+    container.innerHTML = `
+      <div class="col-span-full py-12 text-center">
+        <div class="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-red-950/40 border border-red-500/30 text-red-300 font-mono text-xs">
+          <span class="w-2 h-2 rounded-full bg-red-400 animate-pulse"></span>
+          Could not reach the Master Directory sheet. Check the published CSV link and sharing permissions.
+        </div>
+      </div>
+    `;
+    const compCountElem = document.getElementById("compCount");
+    if (compCountElem) compCountElem.textContent = "0";
+    return;
+  }
 
-  // Filter for active year
   const filtered = selectedYear === "all"
     ? rows
     : rows.filter(r => r.year === selectedYear.toString());
@@ -189,7 +106,7 @@ async function loadCompetitionsDirectory(selectedYear = "2026") {
   const seasonTitleElem = document.getElementById("seasonTitle");
   if (seasonTitleElem) {
     seasonTitleElem.textContent = selectedYear === "all"
-      ? "All-Time Competitions (2021-2026)"
+      ? "All-Time Competitions"
       : `${selectedYear} Competitive Season`;
   }
 
@@ -197,7 +114,6 @@ async function loadCompetitionsDirectory(selectedYear = "2026") {
   const now = new Date();
 
   filtered.forEach(comp => {
-    // Correct Date Evaluation: past date = completed
     const compDateObj = parseLocalDate(comp.date, comp.year);
     const isPast = compDateObj < now;
 
