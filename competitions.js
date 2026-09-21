@@ -4,7 +4,6 @@
 
 const MASTER_INDEX_SPREADSHEET_ID = "106s_uuX5YOXAS_cXPCqj4HaO69DK8wHMWGevKUhTWd0";
 
-// Verified Fallback Catalog (Actual Contest Saturdays)
 const fallbackMasterDirectory = [
   // 2026 Season
   { name: "Metro-East Marching Classic (MEMC)", key: "memc", loc: "O'Fallon, IL", year: "2026", date: "9/12/2026", id: "1yB6emCUzTJMDxpFFtxnZrCPQ9LaiLDU85xoWH5hSOjo" },
@@ -44,7 +43,7 @@ const fallbackMasterDirectory = [
   { name: "Renegade Review", key: "renegade", loc: "Owasso, OK", year: "2023", date: "10/14/2023", id: "1aOD7KDcLPMYkFEkxQUcoYY48amnPMWs01s96t6yNqJo" },
   { name: "BOA St. Louis Super Regional", key: "boastl", loc: "St. Louis, MO", year: "2023", date: "10/27/2023", id: "1ipg6FG-omTfFcDLieyOO1wQbHfWLJIG1aiZAS9bZJh4" },
 
-  // 2022 Season
+  // 2022 Season (Guaranteed 2022 Data)
   { name: "Tiger Ambush Classic", key: "tigerambush", loc: "Edwardsville, IL", year: "2022", date: "9/17/2022", id: "1-UiYEzZIc0wF-fGSwi4uQZ92Y-itl7LGE4SBK2XKJOc" },
   { name: "Broken Arrow Invitational", key: "brokenarrow", loc: "Broken Arrow, OK", year: "2022", date: "10/1/2022", id: "1iatqDcFWffwrRzMKMDXUy5hAizRhfxYqGFSmOpzlQ7s" },
   { name: "Lafayette Contest of Champions", key: "lafayette", loc: "Wildwood, MO", year: "2022", date: "9/24/2022", id: "10e1ghOqkzOyNt7lPOC_TRiw_WWPU2cIHVzxUK_YCPd4" },
@@ -60,7 +59,6 @@ const fallbackMasterDirectory = [
 
 let allMasterRows = [];
 
-// Safe Date Parser (Parses string date to Date object at local 23:59:59 to avoid timezone shift)
 function parseLocalDate(dateStr, fallbackYear) {
   if (!dateStr) return new Date(`${fallbackYear}-10-31T23:59:59`);
   const parts = dateStr.trim().split(/[-/]/);
@@ -81,7 +79,6 @@ function parseLocalDate(dateStr, fallbackYear) {
   return new Date(dateStr);
 }
 
-// Format string cleanly without date rollbacks
 function formatSafeDate(dateStr) {
   if (!dateStr) return "Scheduled";
   const parts = dateStr.trim().split(/[-/]/);
@@ -132,27 +129,33 @@ async function fetchDirectorySheetData() {
   return allMasterRows;
 }
 
-// Ensures 2022 is in the DOM whether competitions.html uses buttons or a select tag
-function renderSeasonFilterUI(selectedYear) {
+// Injects 2022 into whatever element exists in competitions.html
+function forcePopulate2022InUI(selectedYear) {
   const years = ["all", "2026", "2025", "2024", "2023", "2022", "2021"];
 
-  // 1. If competitions.html uses a <select> element
-  const selectElem = document.querySelector("select#seasonSelect, select#yearFilter, select#yearDropdown");
-  if (selectElem) {
-    selectElem.innerHTML = `<option value="all">All Seasons (2021-2026)</option>`;
-    years.filter(y => y !== "all").forEach(y => {
-      const opt = document.createElement("option");
-      opt.value = y;
-      opt.textContent = `${y} Season`;
-      if (y === selectedYear.toString()) opt.selected = true;
-      selectElem.appendChild(opt);
-    });
-  }
+  // 1. Target any <select> on the page
+  const selectElements = document.querySelectorAll("select");
+  selectElements.forEach(sel => {
+    // Only update if it contains year-like options
+    const html = sel.innerHTML.toLowerCase();
+    if (html.includes("2026") || html.includes("season") || sel.id.includes("year") || sel.id.includes("season")) {
+      sel.innerHTML = `<option value="all">All Seasons (2021-2026)</option>`;
+      years.filter(y => y !== "all").forEach(y => {
+        const opt = document.createElement("option");
+        opt.value = y;
+        opt.textContent = `${y} Season`;
+        if (y === selectedYear.toString()) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      // Attach listener
+      sel.onchange = (e) => filterByYear(e.target.value);
+    }
+  });
 
-  // 2. If competitions.html uses a button container (e.g. #seasonFilterGroup or a div of buttons)
-  const buttonContainer = document.getElementById("seasonFilterGroup") || document.querySelector(".season-filters");
-  if (buttonContainer) {
-    buttonContainer.innerHTML = "";
+  // 2. Target any container of season filter buttons
+  const buttonContainers = document.querySelectorAll(".season-filters, #seasonFilterGroup, [data-season-filters]");
+  buttonContainers.forEach(container => {
+    container.innerHTML = "";
     years.forEach(y => {
       const btn = document.createElement("button");
       btn.onclick = () => filterByYear(y);
@@ -161,9 +164,9 @@ function renderSeasonFilterUI(selectedYear) {
       btn.className = isActive
         ? "px-3 py-1.5 rounded-lg text-xs font-bold transition bg-indigo-600 text-white shadow"
         : "px-3 py-1.5 rounded-lg text-xs font-bold transition bg-slate-900 border border-slate-800 text-slate-400 hover:text-white";
-      buttonContainer.appendChild(btn);
+      container.appendChild(btn);
     });
-  }
+  });
 }
 
 async function loadCompetitionsDirectory(selectedYear = "2026") {
@@ -173,7 +176,7 @@ async function loadCompetitionsDirectory(selectedYear = "2026") {
   container.innerHTML = `<div class="col-span-full py-12 text-center text-slate-400 font-mono text-xs">Syncing active contests...</div>`;
 
   const rows = await fetchDirectorySheetData();
-  renderSeasonFilterUI(selectedYear);
+  forcePopulate2022InUI(selectedYear);
 
   // Filter for active year
   const filtered = selectedYear === "all"
@@ -194,7 +197,7 @@ async function loadCompetitionsDirectory(selectedYear = "2026") {
   const now = new Date();
 
   filtered.forEach(comp => {
-    // Correct Date Evaluation: Checks actual event date against now
+    // Correct Date Evaluation: past date = completed
     const compDateObj = parseLocalDate(comp.date, comp.year);
     const isPast = compDateObj < now;
 
