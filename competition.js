@@ -589,7 +589,7 @@ async function gatherFieldHistory(comp, allEntries, roster) {
 
   const fhcHistory = history["Francis Howell Central"];
   console.log("[gatherFieldHistory] FHC history:", fhcHistory);
-  
+
   return history;
 }
 
@@ -727,6 +727,13 @@ async function enrichFHCSpotlightUpcoming(comp, contestSeasons, allEntries) {
   const proj = fhc?.projection;
   if (!proj) return;
 
+  // Gather FHC's recent completed scores + their most recent caption breakdown
+  // to give the outlook model concrete numbers to reason over.
+  const fhcRecentScores = await gatherFHCRecentScores(comp, allEntries);
+  const fhcCaptions = fhcRecentScores.length > 0
+    ? (fhcRecentScores[fhcRecentScores.length - 1].captions || null)
+    : null;
+
   const cacheKey = hashData({
     kind: "outlook",
     comp: comp.key,
@@ -734,7 +741,9 @@ async function enrichFHCSpotlightUpcoming(comp, contestSeasons, allEntries) {
     rosterSize: roster.length,
     fhcScore: proj.projectedScore,
     fhcRank: proj.projectedRank,
-    fhcFinalsChance: proj.finalsChance
+    fhcFinalsChance: proj.finalsChance,
+    recentScores: fhcRecentScores.map(s => `${s.year}-${s.score.toFixed(2)}`).join("|"),
+    captionsHash: fhcCaptions ? JSON.stringify(fhcCaptions) : ""
   });
 
   const cached = getCache(cacheKey);
@@ -755,7 +764,7 @@ async function enrichFHCSpotlightUpcoming(comp, contestSeasons, allEntries) {
   const priorSameContest = await gatherPriorSameContestScores(comp, contestSeasons, allEntries);
 
   try {
-    const result = await generateContestOutlook(comp, proj, priorSameContest, cacheKey);
+    const result = await generateContestOutlook(comp, proj, priorSameContest, cacheKey, fhcRecentScores, fhcCaptions);
     setCache(cacheKey, result, 24);
     headlineEl.textContent = result.headline || "Contest Outlook";
     summaryEl.textContent = result.reasoning || "";
@@ -763,6 +772,38 @@ async function enrichFHCSpotlightUpcoming(comp, contestSeasons, allEntries) {
     console.error("[enrichFHCSpotlightUpcoming]", err);
     summaryEl.innerHTML = `<span class="text-amber-400 text-xs font-mono">Outlook unavailable — ${err.message}</span>`;
   }
+}
+
+// FHC's completed 2026 contests in chronological order, with captions from the
+// most recent performance attached so the model has real numbers to cite.
+async function gatherFHCRecentScores(comp, allEntries) {
+  const now = new Date();
+  const completed = allEntries
+    .filter(e => e.year === comp.year && e.key !== comp.key)
+    .map(e => ({ ...e, dateObj: parseLocalDate(e.date, e.year) }))
+    .filter(e => e.dateObj < now)
+    .sort((a, b) => a.dateObj - b.dateObj);
+
+  const out = [];
+  for (const e of completed) {
+    try {
+      const rows = await fetchSheetGrid(e.id, e.prelimsTab);
+      const parsed = parseFullWorkbookCSV(rows);
+      const fhc = parsed.prelims.find(b => b.name.toLowerCase().includes("howell central"));
+      if (fhc && fhc.base > 0) {
+        out.push({
+          year: e.year,
+          contest: e.name,
+          date: e.date,
+          score: fhc.base,
+          captions: fhc.captions || null
+        });
+      }
+    } catch (err) {
+      console.warn(`[gatherFHCRecentScores] Skipping ${e.name}:`, err);
+    }
+  }
+  return out;
 }
 
 async function gatherPriorSameContestScores(comp, contestSeasons, allEntries) {

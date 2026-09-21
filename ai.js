@@ -51,8 +51,6 @@ function bandNameMatches(a, b) {
   if (!na || !nb) return false;
   if (na === nb) return true;
 
-  // Strip generic school descriptors, then require EXACT match of the cores.
-  // Prevents "Francis Howell" from matching "Francis Howell Central".
   const generic = /\b(high|hs|school|academy|community|township|county|district|the)\b/g;
   const strip = (s) => s.replace(generic, "").replace(/\s+/g, " ").trim();
   const sa = strip(na);
@@ -63,10 +61,6 @@ function bandNameMatches(a, b) {
 
 // ---------------------------------------------------------------------------
 // Low-level Gemini call
-//
-// Thinking enabled at Gemini's native dynamic budget. Costs ~3-6s per call
-// instead of ~1s, but produces materially better analytical output.
-// maxOutputTokens must be generous since thinking tokens count against it.
 // ---------------------------------------------------------------------------
 async function callGemini(prompt, { schema = null, temperature = 0.3, maxTokens = 16000, cacheKey = null } = {}) {
   if (!GEMINI_PROXY_URL || GEMINI_PROXY_URL.includes("YOUR-SUBDOMAIN")) {
@@ -251,16 +245,24 @@ const OUTLOOK_SCHEMA = {
   required: ["headline", "reasoning"]
 };
 
-function buildOutlookPrompt(comp, fhcProjection, priorSeasonScores) {
+function buildOutlookPrompt(comp, fhcProjection, priorSeasonScores, fhcRecentScores, fhcCaptions) {
   const priorText = priorSeasonScores.length
     ? priorSeasonScores.map(p => `  * ${p.year}: ${p.score.toFixed(3)}`).join("\n")
     : "  * No prior contest history on file.";
+
+  const recentText = fhcRecentScores.length
+    ? fhcRecentScores.map(s => `  * ${s.year} ${s.contest}: ${s.score.toFixed(3)}`).join("\n")
+    : "  * No completed contests this season yet.";
 
   const rank = fhcProjection.projectedRank;
   const score = fhcProjection.projectedScore;
   const advanceNote = fhcProjection.finalsChance != null && fhcProjection.finalsChance > 0
     ? `\n- Projected Finals Advance Probability: ${Math.round(fhcProjection.finalsChance)}%`
     : "";
+
+  const captionsText = fhcCaptions && Object.keys(fhcCaptions).length > 0
+    ? captionLines({ captions: fhcCaptions })
+    : "  (Caption breakdown not available for FHC's most recent contest)";
 
   return `You are an expert competitive marching band analyst writing an advance scouting outlook for the directors of Francis Howell Central (FHC).
 
@@ -272,14 +274,21 @@ function buildOutlookPrompt(comp, fhcProjection, priorSeasonScores) {
 - Projected Score: ${score.toFixed(2)}
 - Projected Standing: #${rank} overall${advanceNote}
 
-=== HISTORICAL PERFORMANCES AT THIS CONTEST ===
+=== FHC PRIOR APPEARANCES AT THIS EXACT CONTEST ===
 ${priorText}
+
+=== FHC 2026 SEASON SCORES TO DATE ===
+${recentText}
+
+=== FHC'S MOST RECENT CAPTION PERFORMANCE ===
+${captionsText}
 
 === DIRECTIVES ===
 1. Do NOT recalculate or contradict the projected numbers above.
-2. Explain the exact competitive dynamics: examine scoring trends, calendar week pacing, and what caption performance (Music vs. Visual vs. GE) FHC must deliver to exceed or fall below this projection.
-3. Keep the headline under 8 words, bold and journalistic.
-4. Reasoning must be exactly 2 dense, insightful sentences with specific context.
+2. Explain WHY these numbers make sense: reference FHC's trajectory across the listed scores, their caption balance at their most recent performance, and what specifically needs to improve (Music execution vs. Visual ensemble vs. General Effect) for them to exceed or miss this projection.
+3. Cite exact decimal scores from the lists above. No vague language.
+4. Keep the headline under 8 words, bold and journalistic.
+5. Reasoning must be exactly 2 dense, insightful sentences.
 
 Return valid JSON matching this schema:
 ${JSON.stringify(OUTLOOK_SCHEMA)}`;
@@ -303,10 +312,9 @@ const FIELD_PROJECTION_SCHEMA = {
           projectedScore:  { type: "number" },
           projectedRank:   { type: "number" },
           finalsChance:    { type: "number" },
-          confidence:      { type: "string", enum: ["low", "medium", "high"] },
-          note:            { type: "string" }
+          confidence:      { type: "string", enum: ["low", "medium", "high"] }
         },
-        required: ["name", "projectedScore", "projectedRank", "finalsChance", "confidence", "note"]
+        required: ["name", "projectedScore", "projectedRank", "finalsChance", "confidence"]
       }
     }
   },
@@ -354,7 +362,7 @@ SCORING:
 - A band's score should reflect where that band actually is. Field strength affects placement, not raw score. A program that has never broken 72 does not suddenly score 79 because they're standing next to a 92.
 - Weigh the most recent completed contests most heavily, then prior-year placements at this exact venue, then older data at peer venues.
 - Consider trajectory: a program on a multi-year upward curve should be projected to continue that curve; a program that has plateaued should be projected to plateau. Read the data rather than applying a rule.
-- Programs with no prior recorded history: estimate from the overall field, mark confidence "low", and say so in the note.
+- Programs with no prior recorded history: estimate from the overall field, mark confidence "low".
 
 RANK INTEGRITY:
 - projectedRank MUST be strictly unique integers from 1 through ${roster.length}.
@@ -385,12 +393,12 @@ async function generatePerformanceSummary(comp, fhc, roster, currentRound, prior
   return await callGemini(prompt, { schema: SUMMARY_SCHEMA, temperature: 0.3, maxTokens: 8000 });
 }
 
-async function generateContestOutlook(comp, fhcProjection, priorSeasonScores, cacheKey = null) {
-  const prompt = buildOutlookPrompt(comp, fhcProjection, priorSeasonScores);
+async function generateContestOutlook(comp, fhcProjection, priorSeasonScores, cacheKey = null, fhcRecentScores = [], fhcCaptions = null) {
+  const prompt = buildOutlookPrompt(comp, fhcProjection, priorSeasonScores, fhcRecentScores, fhcCaptions);
   return await callGemini(prompt, { schema: OUTLOOK_SCHEMA, temperature: 0.4, maxTokens: 6000, cacheKey });
 }
 
 async function generateFieldProjections(comp, roster, history, cacheKey = null) {
   const prompt = buildFieldProjectionPrompt(comp, roster, history);
-  return await callGemini(prompt, { schema: FIELD_PROJECTION_SCHEMA, temperature: 0.2, maxTokens: 24000, cacheKey });
+  return await callGemini(prompt, { schema: FIELD_PROJECTION_SCHEMA, temperature: 0.2, maxTokens: 12000, cacheKey });
 }
