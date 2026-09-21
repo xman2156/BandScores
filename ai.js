@@ -229,54 +229,50 @@ Output JSON only, matching this schema exactly: ${JSON.stringify(SUMMARY_SCHEMA)
 }
 
 // ---------------------------------------------------------------------------
-// Prompt: upcoming-contest outlook (FHC spotlight)
+// Prompt: upcoming-contest outlook text (FHC spotlight headline + reasoning)
+// The numeric projection comes from the field-wide projection. This call
+// only writes the reasoning/headline. Numbers are passed in for context so
+// the reasoning matches what's shown on the tiles.
 // ---------------------------------------------------------------------------
 const OUTLOOK_SCHEMA = {
   type: "object",
   properties: {
-    projectedScore:     { type: "number" },
-    projectedPlacement: { type: "string" },
-    reasoning:          { type: "string" },
-    confidence:         { type: "string", enum: ["low", "medium", "high"] }
+    headline:  { type: "string" },
+    reasoning: { type: "string" }
   },
-  required: ["projectedScore", "projectedPlacement", "reasoning", "confidence"]
+  required: ["headline", "reasoning"]
 };
 
-function buildOutlookPrompt(comp, roster, priorSeasonScores, currentSeasonScores) {
-  const registeredBands = roster.map(b => b.name);
-  const notable = registeredBands.slice(0, 8).join(", ");
-
+function buildOutlookPrompt(comp, fhcProjection, priorSeasonScores) {
   const priorText = priorSeasonScores.length
     ? priorSeasonScores.map(p => `  ${p.year}: ${p.score.toFixed(3)}`).join("\n")
     : "  (FHC has no prior appearances at this contest)";
 
-  const currentText = currentSeasonScores.length
-    ? currentSeasonScores.map(s => `  ${s.contest} (${s.date}): ${s.score.toFixed(3)}`).join("\n")
-    : "  (no completed 2026 contests yet)";
+  const rank = fhcProjection.projectedRank;
+  const score = fhcProjection.projectedScore;
+  const finalsLine = fhcProjection.finalsChance != null && fhcProjection.finalsChance > 0
+    ? `\nProjected finals-advance chance: ${Math.round(fhcProjection.finalsChance)}%`
+    : "";
 
-  return `You are a marching band competition analyst projecting outcomes for an upcoming contest. Be specific. Do not hedge.
+  return `You are a marching band competition analyst writing for band directors. Cite specific numbers. Do not use filler phrases like "showcased their talents" or "demonstrated excellence". Be direct.
 
 === CONTEXT ===
 Contest: ${comp.name} (${comp.year}), ${comp.loc}
 Date: ${comp.date}
 
+A separate field-wide projection model has already calculated these numbers for Francis Howell Central at this contest:
+  Projected preliminary score: ${score.toFixed(2)}
+  Projected rank: #${rank}${finalsLine}
+
 FHC prior appearances at this same contest:
 ${priorText}
 
-FHC 2026 season to date:
-${currentText}
-
-Field size: ${roster.length} bands registered
-Sample of registered bands: ${notable}
-
 === TASK ===
-Project Francis Howell Central's likely score and placement at this contest.
+Do NOT recompute or restate the projected score/rank. Instead, write text that explains WHY these numbers make sense.
 
 Return JSON with these fields:
-- projectedScore: number (e.g. 74.2)
-- projectedPlacement: short string (e.g. "top 15 of Class AAA" or "#4-7 in Class AAAA")
-- reasoning: 2 sentences. Cite specific historical scores and current-season trajectory.
-- confidence: "low" | "medium" | "high"
+- headline: 8 words or fewer. Concrete, not promotional. May reference the placement.
+- reasoning: exactly 2 sentences. Explain what FHC's history at this contest and this season suggests, and what would need to go right (or wrong) for them to beat or miss the projection.
 
 Output JSON only, matching this schema exactly: ${JSON.stringify(OUTLOOK_SCHEMA)}`;
 }
@@ -370,7 +366,7 @@ Return JSON with these fields:
   - projectedRank: integer
   - finalsChance: number (0-100)
   - confidence: "low" | "medium" | "high"
-  - note: one sentence citing the specific historical scores that informed this projection
+  - note: 1-2 sentences of reasoning. Cite the specific historical scores that informed this projection.
 
 Output JSON only, matching this schema exactly: ${JSON.stringify(FIELD_PROJECTION_SCHEMA)}`;
 }
@@ -383,9 +379,9 @@ async function generatePerformanceSummary(comp, fhc, roster, currentRound, prior
   return await callGemini(prompt, { schema: SUMMARY_SCHEMA, temperature: 0.5, maxTokens: 4000 });
 }
 
-async function generateContestOutlook(comp, roster, priorSeasonScores, currentSeasonScores) {
-  const prompt = buildOutlookPrompt(comp, roster, priorSeasonScores, currentSeasonScores);
-  return await callGemini(prompt, { schema: OUTLOOK_SCHEMA, temperature: 0.6, maxTokens: 4000 });
+async function generateContestOutlook(comp, fhcProjection, priorSeasonScores, cacheKey = null) {
+  const prompt = buildOutlookPrompt(comp, fhcProjection, priorSeasonScores);
+  return await callGemini(prompt, { schema: OUTLOOK_SCHEMA, temperature: 0.6, maxTokens: 1500, cacheKey });
 }
 
 async function generateFieldProjections(comp, roster, history, cacheKey = null) {

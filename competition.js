@@ -357,195 +357,97 @@ async function loadCompetitionView(eventKey, selectedYear, selectedRound) {
 
   renderUI(targetEntry, selectedYear, selectedRound, targetTab);
 
-  enrichFHCSpotlight(targetEntry, selectedYear, selectedRound, contestSeasons, allEntries);
-  if (!targetEntry.isPast) {
-    enrichProjectedStandings(targetEntry, allEntries);
+  if (targetEntry.isPast) {
+    enrichFHCSpotlightPast(targetEntry, selectedYear, selectedRound, contestSeasons, allEntries);
+  } else {
+    // Field projections run first; they populate the tiles and then trigger
+    // the outlook text generation, which uses the projection as context.
+    enrichProjectedStandings(targetEntry, allEntries, selectedRound, contestSeasons);
   }
 }
 
 // =============================================================================
-// AI Enrichment — FHC Spotlight
+// AI Enrichment — FHC Spotlight (past contests only)
 // =============================================================================
-async function enrichFHCSpotlight(comp, year, currentRound, contestSeasons, allEntries) {
+async function enrichFHCSpotlightPast(comp, year, currentRound, contestSeasons, allEntries) {
   const spotlight = document.getElementById("fhcSpotlightSection");
   const headlineEl = document.getElementById("fhcEventHeadline");
   const summaryEl = document.getElementById("fhcEventSummary");
   const extrasEl = document.getElementById("fhcAIExtras");
   if (!spotlight || !headlineEl || !summaryEl || !extrasEl) return;
 
-  const isPast = comp.isPast === true;
   const activeRoster = currentRound === "finals" && activeWorkbookData.finals.length > 0
     ? activeWorkbookData.finals
     : activeWorkbookData.prelims;
 
   const fhc = activeRoster.find(b => b.name.toLowerCase().includes("howell central"));
-  if (isPast && !fhc) return;
-  if (!isPast && activeRoster.length === 0) return;
+  if (!fhc) return;
 
-  // For upcoming contests, the outlook is identical regardless of round,
-  // so we deliberately EXCLUDE round from the cache key to share one result.
-  // For past contests, prelims and finals results differ, so we include round.
-  const cacheKeyInput = {
-    kind: isPast ? "summary" : "outlook",
+  const cacheKey = hashData({
+    kind: "summary",
     comp: comp.key,
     year,
-    fhc: fhc ? { name: fhc.name, base: fhc.base, captions: fhc.captions } : null,
+    round: currentRound,
+    fhc: { name: fhc.name, base: fhc.base, captions: fhc.captions },
     rosterSize: activeRoster.length
-  };
-  if (isPast) cacheKeyInput.round = currentRound;
-  const cacheKey = hashData(cacheKeyInput);
+  });
 
   const cached = getCache(cacheKey);
-  if (cached) { applyAIResult(cached, isPast, headlineEl, summaryEl, extrasEl); return; }
+  if (cached) { applySummaryResult(cached, headlineEl, summaryEl, extrasEl); return; }
 
-  showAILoading(summaryEl, isPast);
+  showAILoading(summaryEl, true);
   extrasEl.classList.add("hidden");
 
   const priorSameContest = await gatherPriorSameContestScores(comp, contestSeasons, allEntries);
-  const currentSeason = isPast ? await gatherCurrentSeasonScores(comp, allEntries) : [];
 
   try {
-    let result;
-    if (isPast) {
-      result = await generatePerformanceSummary(comp, fhc, activeRoster, currentRound, priorSameContest);
-    } else {
-      result = await generateContestOutlook(comp, activeRoster, priorSameContest, currentSeason);
-    }
+    const result = await generatePerformanceSummary(comp, fhc, activeRoster, currentRound, priorSameContest);
     setCache(cacheKey, result, 24);
-    applyAIResult(result, isPast, headlineEl, summaryEl, extrasEl);
+    applySummaryResult(result, headlineEl, summaryEl, extrasEl);
   } catch (err) {
-    console.error("[enrichFHCSpotlight]", err);
-    showAIError(summaryEl, extrasEl, err.message, isPast);
+    console.error("[enrichFHCSpotlightPast]", err);
+    showAIError(summaryEl, extrasEl, err.message, true);
   }
 }
 
-async function gatherPriorSameContestScores(comp, contestSeasons, allEntries) {
-  const priors = contestSeasons.filter(c => c.year !== comp.year && parseInt(c.year, 10) < parseInt(comp.year, 10));
-  const out = [];
-  for (const p of priors) {
-    try {
-      const rows = await fetchSheetGrid(p.id, p.prelimsTab);
-      const parsed = parseFullWorkbookCSV(rows);
-      const fhc = parsed.prelims.find(b => b.name.toLowerCase().includes("howell central"));
-      if (fhc && fhc.base > 0) out.push({ year: p.year, score: fhc.base });
-    } catch (e) {
-      console.warn(`[gatherPriorSameContestScores] Skipping ${p.year}:`, e);
-    }
-  }
-  return out.sort((a, b) => parseInt(a.year, 10) - parseInt(b.year, 10));
-}
+function applySummaryResult(result, headlineEl, summaryEl, extrasEl) {
+  headlineEl.textContent = result.headline || "Official Performance Summary";
+  summaryEl.textContent = result.summary || "";
 
-async function gatherCurrentSeasonScores(comp, allEntries) {
-  const now = new Date();
-  const sameYear = allEntries
-    .filter(e => e.year === comp.year && e.key !== comp.key)
-    .map(e => ({ ...e, dateObj: parseLocalDate(e.date, e.year) }))
-    .filter(e => e.dateObj < now)
-    .sort((a, b) => b.dateObj - a.dateObj)
-    .slice(0, 3);
-
-  const out = [];
-  for (const e of sameYear) {
-    try {
-      const rows = await fetchSheetGrid(e.id, e.prelimsTab);
-      const parsed = parseFullWorkbookCSV(rows);
-      const fhc = parsed.prelims.find(b => b.name.toLowerCase().includes("howell central"));
-      if (fhc && fhc.base > 0) out.push({ contest: e.name, date: e.date, score: fhc.base });
-    } catch (err) {
-      console.warn(`[gatherCurrentSeasonScores] Skipping ${e.name}:`, err);
-    }
-  }
-  return out;
-}
-
-function showAILoading(summaryEl, isPast) {
-  summaryEl.innerHTML = `
-    <span class="inline-flex items-center gap-2 text-slate-400">
-      <span class="w-3 h-3 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin"></span>
-      ${isPast ? "Analyzing performance..." : "Generating outlook..."}
-    </span>
-  `;
-}
-
-function showAIError(summaryEl, extrasEl, msg, isPast) {
-  summaryEl.innerHTML = `<span class="text-red-400 text-xs font-mono">AI ${isPast ? "analysis" : "outlook"} unavailable — ${msg}</span>`;
-  extrasEl.classList.add("hidden");
-}
-
-function applyAIResult(result, isPast, headlineEl, summaryEl, extrasEl) {
-  if (isPast) {
-    headlineEl.textContent = result.headline || "Official Performance Summary";
-    summaryEl.textContent = result.summary || "";
-
-    const chips = [];
-    (result.strengths || []).forEach(s => chips.push(`
-      <div class="flex items-start gap-2 text-xs">
-        <span class="text-emerald-400 font-mono mt-0.5">▲</span>
-        <span class="text-slate-300">${s}</span>
+  const chips = [];
+  (result.strengths || []).forEach(s => chips.push(`
+    <div class="flex items-start gap-2 text-xs">
+      <span class="text-emerald-400 font-mono mt-0.5">▲</span>
+      <span class="text-slate-300">${s}</span>
+    </div>
+  `));
+  (result.weaknesses || []).forEach(w => chips.push(`
+    <div class="flex items-start gap-2 text-xs">
+      <span class="text-amber-400 font-mono mt-0.5">▼</span>
+      <span class="text-slate-300">${w}</span>
+    </div>
+  `));
+  if (result.trajectory) {
+    chips.push(`
+      <div class="flex items-start gap-2 text-xs pt-1 border-t border-slate-800/60 mt-1">
+        <span class="text-indigo-400 font-mono mt-0.5">→</span>
+        <span class="text-slate-400 italic">${result.trajectory}</span>
       </div>
-    `));
-    (result.weaknesses || []).forEach(w => chips.push(`
-      <div class="flex items-start gap-2 text-xs">
-        <span class="text-amber-400 font-mono mt-0.5">▼</span>
-        <span class="text-slate-300">${w}</span>
-      </div>
-    `));
-    if (result.trajectory) {
-      chips.push(`
-        <div class="flex items-start gap-2 text-xs pt-1 border-t border-slate-800/60 mt-1">
-          <span class="text-indigo-400 font-mono mt-0.5">→</span>
-          <span class="text-slate-400 italic">${result.trajectory}</span>
-        </div>
-      `);
-    }
-    extrasEl.innerHTML = chips.join("");
-    extrasEl.classList.remove("hidden");
-  } else {
-    headlineEl.textContent = "Contest Outlook";
-    summaryEl.textContent = result.reasoning || "";
-
-    const peakEl = document.getElementById("fhcStatPeak");
-    const peakSubEl = document.getElementById("fhcStatPeakSub");
-    const rankEl = document.getElementById("fhcStatRank");
-    const rankSubEl = document.getElementById("fhcStatRankSub");
-
-    if (result.projectedScore && peakEl) {
-      peakEl.textContent = Number(result.projectedScore).toFixed(2);
-      peakEl.classList.add("text-indigo-300");
-      if (peakSubEl) peakSubEl.textContent = "AI Projected";
-    }
-    if (result.projectedPlacement && rankEl) {
-      rankEl.textContent = result.projectedPlacement;
-      if (rankSubEl) rankSubEl.textContent = `${(result.confidence || "medium").toUpperCase()} confidence`;
-    }
-
-    if (result.confidence) {
-      const confColor = result.confidence === "high" ? "emerald" : result.confidence === "low" ? "amber" : "indigo";
-      extrasEl.innerHTML = `
-        <div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-${confColor}-500/10 border border-${confColor}-500/20 text-${confColor}-300">
-          <span class="w-1.5 h-1.5 rounded-full bg-${confColor}-400"></span>
-          ${result.confidence} confidence projection
-        </div>
-      `;
-      extrasEl.classList.remove("hidden");
-    }
+    `);
   }
+  extrasEl.innerHTML = chips.join("");
+  extrasEl.classList.remove("hidden");
 }
 
 // =============================================================================
 // AI Enrichment — Field-Wide Projected Standings
 // =============================================================================
-async function enrichProjectedStandings(comp, allEntries) {
-  // The roster is always the prelims sheet for upcoming contests.
-  // If the user navigated straight to a finals tab and prelims is empty,
-  // fall back to whatever roster we do have.
+async function enrichProjectedStandings(comp, allEntries, selectedRound, contestSeasons) {
   const roster = activeWorkbookData.prelims.length > 0
     ? activeWorkbookData.prelims
     : activeWorkbookData.finals;
   if (roster.length === 0) return;
 
-  // Field projections are cached per contest+year only — NOT per round.
-  // The prelims and finals pages show the same projection.
   const cacheKey = hashData({
     kind: "field-projection",
     comp: comp.key,
@@ -555,14 +457,12 @@ async function enrichProjectedStandings(comp, allEntries) {
 
   const cached = getCache(cacheKey);
   if (cached) {
-    applyFieldProjections(cached, roster);
+    applyFieldProjections(cached, roster, comp, selectedRound, contestSeasons, allEntries);
     return;
   }
 
   showProjectionLoading();
 
-  // KV cache key: scoped to contest + ISO week, so it auto-refreshes every Monday.
-  // No round component — same projection serves both prelims and finals views.
   const weekNum = Math.floor(Date.now() / (7 * 24 * 3600 * 1000));
   const kvCacheKey = `proj-${comp.key}-${comp.year}-w${weekNum}`;
 
@@ -570,7 +470,7 @@ async function enrichProjectedStandings(comp, allEntries) {
     const history = await gatherFieldHistory(comp, allEntries, roster);
     const result = await generateFieldProjections(comp, roster, history, kvCacheKey);
     setCache(cacheKey, result, 24);
-    applyFieldProjections(result, roster);
+    applyFieldProjections(result, roster, comp, selectedRound, contestSeasons, allEntries);
   } catch (err) {
     console.error("[enrichProjectedStandings]", err);
     clearProjectionLoading();
@@ -580,7 +480,6 @@ async function enrichProjectedStandings(comp, allEntries) {
 async function gatherFieldHistory(comp, allEntries, roster) {
   const now = new Date();
 
-  // Every completed contest in the directory, except the current one
   const sources = allEntries
     .filter(e => !(e.key === comp.key && e.year === comp.year))
     .map(e => ({ ...e, dateObj: parseLocalDate(e.date, e.year) }))
@@ -667,7 +566,7 @@ function clearProjectionLoading() {
   renderLeaderboard(activeWorkbookData.prelims, false);
 }
 
-function applyFieldProjections(result, roster) {
+function applyFieldProjections(result, roster, comp, selectedRound, contestSeasons, allEntries) {
   if (!result || !Array.isArray(result.projections)) return;
 
   result.projections.forEach(p => {
@@ -694,6 +593,156 @@ function applyFieldProjections(result, roster) {
   }
 
   renderLeaderboard(roster, false);
+
+  // Populate the spotlight tiles from the field projection
+  populateUpcomingSpotlightTiles(comp, selectedRound);
+
+  // Now that tiles are populated, generate the outlook text
+  if (comp && contestSeasons && allEntries) {
+    enrichFHCSpotlightUpcoming(comp, contestSeasons, allEntries).catch(err => {
+      console.warn("[enrichFHCSpotlightUpcoming]", err);
+    });
+  }
+}
+
+// =============================================================================
+// Populate Upcoming Spotlight Tiles from Field Projections
+// =============================================================================
+function populateUpcomingSpotlightTiles(comp, currentRound) {
+  const roster = activeWorkbookData.prelims.length > 0
+    ? activeWorkbookData.prelims
+    : activeWorkbookData.finals;
+  const fhc = roster.find(b => b.name.toLowerCase().includes("howell central"));
+  const spotlight = document.getElementById("fhcSpotlightSection");
+  if (!fhc || !spotlight) {
+    if (spotlight) spotlight.classList.add("hidden");
+    return;
+  }
+
+  const proj = fhc.projection;
+  if (!proj) return;
+
+  // Tile 1: Projected Score
+  document.getElementById("statLabel1").textContent = "Projected Score";
+  const peakEl = document.getElementById("fhcStatPeak");
+  peakEl.textContent = proj.projectedScore.toFixed(2);
+  peakEl.className = "stat-value text-violet-300 font-mono";
+  document.getElementById("fhcStatPeakSub").textContent = "AI Projection";
+
+  // Tile 2: Projected Standing
+  document.getElementById("statLabel2").textContent = "Projected Standing";
+  document.getElementById("fhcStatRank").textContent = `#${proj.projectedRank}`;
+  document.getElementById("fhcStatRankSub").textContent = `${proj.confidence} confidence`;
+
+  // Tile 3: Finals Chance
+  const finalsCard = document.getElementById("finalsBenchmarkCard");
+  const hasFinals = activeFieldProjections && activeFieldProjections.finalsSize > 0;
+  const showFinalsTile = hasFinals && (!showRoundToggle() || currentRound === "prelims");
+
+  if (showFinalsTile) {
+    finalsCard.classList.remove("hidden");
+    const fc = proj.finalsChance ?? 0;
+    const cls = fc >= 90 ? "text-emerald-300"
+              : fc >= 60 ? "text-indigo-300"
+              : fc >= 30 ? "text-amber-300"
+              : "text-slate-400";
+    document.getElementById("statLabel3").textContent = "Finals Chance";
+    const cutoffEl = document.getElementById("fhcStatCutoff");
+    cutoffEl.textContent = `${Math.round(fc)}%`;
+    cutoffEl.className = `stat-value font-mono ${cls}`;
+    document.getElementById("fhcStatCutoffSub").textContent = `Top ${activeFieldProjections.finalsSize} advance`;
+  } else {
+    finalsCard.classList.add("hidden");
+  }
+}
+
+function showRoundToggle() {
+  const rc = document.getElementById("roundToggleContainer");
+  return rc && !rc.classList.contains("hidden");
+}
+
+// =============================================================================
+// AI Enrichment — FHC Contest Outlook text (upcoming)
+// =============================================================================
+async function enrichFHCSpotlightUpcoming(comp, contestSeasons, allEntries) {
+  const headlineEl = document.getElementById("fhcEventHeadline");
+  const summaryEl = document.getElementById("fhcEventSummary");
+  if (!headlineEl || !summaryEl) return;
+
+  const roster = activeWorkbookData.prelims.length > 0
+    ? activeWorkbookData.prelims
+    : activeWorkbookData.finals;
+  const fhc = roster.find(b => b.name.toLowerCase().includes("howell central"));
+  const proj = fhc?.projection;
+  if (!proj) return;
+
+  // Cache key: no round, since prelims and finals show the same outlook
+  const cacheKey = hashData({
+    kind: "outlook",
+    comp: comp.key,
+    year: comp.year,
+    rosterSize: roster.length,
+    fhcScore: proj.projectedScore,
+    fhcRank: proj.projectedRank,
+    fhcFinalsChance: proj.finalsChance
+  });
+
+  const cached = getCache(cacheKey);
+  if (cached) {
+    headlineEl.textContent = cached.headline || "Contest Outlook";
+    summaryEl.textContent = cached.reasoning || "";
+    return;
+  }
+
+  headlineEl.textContent = "Contest Outlook";
+  summaryEl.innerHTML = `
+    <span class="inline-flex items-center gap-2 text-slate-400">
+      <span class="w-3 h-3 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin"></span>
+      Generating outlook...
+    </span>
+  `;
+
+  const priorSameContest = await gatherPriorSameContestScores(comp, contestSeasons, allEntries);
+
+  try {
+    const result = await generateContestOutlook(comp, proj, priorSameContest, cacheKey);
+    setCache(cacheKey, result, 24);
+    headlineEl.textContent = result.headline || "Contest Outlook";
+    summaryEl.textContent = result.reasoning || "";
+  } catch (err) {
+    console.error("[enrichFHCSpotlightUpcoming]", err);
+    summaryEl.innerHTML = `<span class="text-amber-400 text-xs font-mono">Outlook unavailable — ${err.message}</span>`;
+  }
+}
+
+async function gatherPriorSameContestScores(comp, contestSeasons, allEntries) {
+  const priors = contestSeasons.filter(c => c.year !== comp.year && parseInt(c.year, 10) < parseInt(comp.year, 10));
+  const out = [];
+  for (const p of priors) {
+    try {
+      const rows = await fetchSheetGrid(p.id, p.prelimsTab);
+      const parsed = parseFullWorkbookCSV(rows);
+      const fhc = parsed.prelims.find(b => b.name.toLowerCase().includes("howell central"));
+      if (fhc && fhc.base > 0) out.push({ year: p.year, score: fhc.base });
+    } catch (e) {
+      console.warn(`[gatherPriorSameContestScores] Skipping ${p.year}:`, e);
+    }
+  }
+  return out.sort((a, b) => parseInt(a.year, 10) - parseInt(b.year, 10));
+}
+
+function showAILoading(summaryEl, isPast) {
+  summaryEl.innerHTML = `
+    <span class="inline-flex items-center gap-2 text-slate-400">
+      <span class="w-3 h-3 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin"></span>
+      ${isPast ? "Analyzing performance..." : "Generating outlook..."}
+    </span>
+  `;
+}
+
+function showAIError(summaryEl, extrasEl, msg, isPast) {
+  summaryEl.innerHTML = `<span class="text-red-400 text-xs font-mono">AI ${isPast ? "analysis" : "outlook"} unavailable — ${msg}</span>`;
+  extrasEl.classList.add("hidden");
 }
 
 // =============================================================================
@@ -742,11 +791,11 @@ function renderUI(comp, year, currentRound, tabName) {
   const spotlightSection = document.getElementById("fhcSpotlightSection");
   const finalsCard = document.getElementById("finalsBenchmarkCard");
 
-  if (!fhc && isPast) {
+  if (!fhc) {
     spotlightSection.classList.add("hidden");
   } else {
     spotlightSection.classList.remove("hidden");
-    if (isPast && fhc) {
+    if (isPast) {
       document.getElementById("statLabel1").textContent = "Official Score";
       document.getElementById("statLabel2").textContent = "Round Placement";
       document.getElementById("fhcStatPeak").textContent = fmtScore(fhc.base);
@@ -771,19 +820,20 @@ function renderUI(comp, year, currentRound, tabName) {
         finalsCard.classList.add("hidden");
       }
     } else {
-      document.getElementById("statLabel1").textContent = "Historical Mark";
+      // Upcoming placeholder — will be replaced by populateUpcomingSpotlightTiles
+      document.getElementById("statLabel1").textContent = "Projected Score";
       document.getElementById("statLabel2").textContent = "Projected Standing";
-      document.getElementById("fhcStatPeak").textContent = "Pending";
-      document.getElementById("fhcStatPeakSub").textContent = "Season Mark";
-      document.getElementById("fhcStatRank").textContent = "Pending";
-      document.getElementById("fhcStatRankSub").textContent = "Gemini API Projection";
+      document.getElementById("statLabel3").textContent = "Finals Chance";
+      document.getElementById("fhcStatPeak").textContent = "…";
+      document.getElementById("fhcStatPeakSub").textContent = "Generating";
+      document.getElementById("fhcStatRank").textContent = "…";
+      document.getElementById("fhcStatRankSub").textContent = "Generating";
       document.getElementById("fhcEventHeadline").textContent = "Contest Outlook";
-      document.getElementById("fhcEventSummary").textContent = `Generating outlook...`;
+      document.getElementById("fhcEventSummary").textContent = `Analyzing field history and generating projections...`;
       if (showToggle && currentRound === "prelims") {
         finalsCard.classList.remove("hidden");
-        document.getElementById("statLabel3").textContent = "Finals Benchmark";
-        document.getElementById("fhcStatCutoff").textContent = "Pending";
-        document.getElementById("fhcStatCutoffSub").textContent = "Gemini API Projection";
+        document.getElementById("fhcStatCutoff").textContent = "…";
+        document.getElementById("fhcStatCutoffSub").textContent = "Generating";
       } else {
         finalsCard.classList.add("hidden");
       }
@@ -826,14 +876,13 @@ function renderLeaderboard(activeRoster, isPast) {
   if (!leaderboardBody) return;
 
   const showingProjection = !isPast && activeFieldProjections && activeFieldProjections.projections?.length > 0;
-  const hasFinals = activeFieldProjections?.finalsSize > 0;
 
   if (showingProjection) {
     titleEl.innerHTML = `<i data-lucide="sparkles" class="w-4 h-4 text-violet-400"></i> Projected Standings`;
     badgeEl.textContent = "AI Projection";
     badgeEl.className = "inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-violet-500/10 text-violet-300 border border-violet-500/20 font-mono";
     colScoreEl.textContent = "Proj. Score";
-    colStatusEl.textContent = hasFinals ? "Finals %" : "Confidence";
+    colStatusEl.textContent = "Confidence";
   } else {
     titleEl.innerHTML = `<i data-lucide="award" class="w-4 h-4 text-emerald-400"></i> Results & Standings`;
     badgeEl.textContent = isPast ? "Official Results" : "Awaiting Results";
@@ -850,19 +899,7 @@ function renderLeaderboard(activeRoster, isPast) {
     sorted.forEach((p, idx) => {
       const rosterBand = activeRoster.find(b => bandNameMatches(b.name, p.name));
       const isFHC = p.name.toLowerCase().includes("howell central");
-
-      let lastCol;
-      if (hasFinals) {
-        const fc = p.finalsChance ?? 0;
-        const cls = fc >= 90 ? "text-emerald-400"
-                  : fc >= 60 ? "text-indigo-400"
-                  : fc >= 30 ? "text-amber-400"
-                  : "text-slate-500";
-        lastCol = `<span class="text-xs font-mono font-bold ${cls}">${Math.round(fc)}%</span>`;
-      } else {
-        const confColor = p.confidence === "high" ? "text-emerald-400" : p.confidence === "low" ? "text-amber-400" : "text-indigo-400";
-        lastCol = `<span class="text-[10px] font-mono uppercase tracking-wider ${confColor}">${p.confidence}</span>`;
-      }
+      const confColor = p.confidence === "high" ? "text-emerald-400" : p.confidence === "low" ? "text-amber-400" : "text-indigo-400";
 
       const tr = document.createElement("tr");
       tr.className = isFHC
@@ -877,7 +914,9 @@ function renderLeaderboard(activeRoster, isPast) {
         <td class="py-2.5 px-3 text-right font-mono font-bold text-violet-300 italic">
           ${p.projectedScore.toFixed(2)}
         </td>
-        <td class="py-2.5 px-3 text-right">${lastCol}</td>
+        <td class="py-2.5 px-3 text-right">
+          <span class="text-[10px] font-mono uppercase tracking-wider ${confColor}">${p.confidence}</span>
+        </td>
       `;
       tr.onclick = () => openBandModal(
         rosterBand || { name: p.name, base: 0, captions: {} },
