@@ -100,12 +100,30 @@ async function fetchMasterDirectory() {
 }
 
 // =============================================================================
-// Direct Cell Pattern Parser (No Length Checks, No State Loss)
+// Google gviz JSON Grid Fetcher (preserves merged-cell structure)
 // =============================================================================
-function parseFullWorkbookCSV(rawCsvText) {
-  const parsed = Papa.parse(rawCsvText, { skipEmptyLines: false });
-  const rows = parsed.data;
+async function fetchSheetGrid(sheetId, sheetName) {
+  const params = sheetName ? `&sheet=${encodeURIComponent(sheetName)}` : "";
+  const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json${params}&_cb=${Date.now()}`;
+  const res = await fetch(url);
+  const text = await res.text();
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end === -1) throw new Error("Invalid gviz response");
+  const data = JSON.parse(text.slice(start, end + 1));
+  return (data.table.rows || []).map(r =>
+    (r.c || []).map(cell => {
+      if (cell == null) return "";
+      const v = (cell.f != null && cell.f !== "") ? cell.f : cell.v;
+      return v == null ? "" : String(v).trim();
+    })
+  );
+}
 
+// =============================================================================
+// Direct Cell Pattern Parser (accepts pre-fetched grid rows)
+// =============================================================================
+function parseFullWorkbookCSV(rows) {
   let currentBlock = "Prelims";
   let currentClass = "";
   let inlineClassColIdx = -1;
@@ -121,27 +139,37 @@ function parseFullWorkbookCSV(rawCsvText) {
     "recap", "summary", "stats", "timing", "division", "penalty", "rank", "place"
   ];
 
-  // Google merges header cells like: "Class A Judge Panel Order"
-  // So we prefix-match, not exact-match.
   function detectBanner(row) {
     for (let c = 0; c < Math.min(row.length, 2); c++) {
       const cell = (row[c] || "").trim();
-      if (!cell || cell.length > 120) continue;
+      if (!cell || cell.length > 200) continue;
       const lc = cell.toLowerCase();
 
-      const m = lc.match(/^(class\s+)?(aaaa|aaa|aa|a|4a|3a|2a|1a)\b/);
+      // Never treat school names as banners
+      if (/\b(high school|hs|academy|community)\b/.test(lc)) continue;
+
+      // Class AAAA / AAA / AA / A — can appear anywhere in the cell
+      // (Google sometimes concatenates "Class A Judge Panel Order")
+      const m = lc.match(/\bclass\s+(aaaa|aaa|aa|a)\b/);
       if (m) {
-        const raw = m[2];
-        if (raw === "aaaa" || raw === "4a") return "Class AAAA";
-        if (raw === "aaa"  || raw === "3a") return "Class AAA";
-        if (raw === "aa"   || raw === "2a") return "Class AA";
-        if (raw === "a"    || raw === "1a") return "Class A";
+        return m[1] === "aaaa" ? "Class AAAA"
+             : m[1] === "aaa"  ? "Class AAA"
+             : m[1] === "aa"   ? "Class AA"
+             :                   "Class A";
       }
 
-      const div = lc.match(/^(gold|black|white)(\s+division)?\b/);
-      if (div) {
-        return div[1].charAt(0).toUpperCase() + div[1].slice(1) + " Division";
+      // Bare "AAAA" / "AAA" / "AA" / "A" at start of cell
+      const m2 = lc.match(/^(aaaa|aaa|aa|a)(?:\s|$)/);
+      if (m2) {
+        return m2[1] === "aaaa" ? "Class AAAA"
+             : m2[1] === "aaa"  ? "Class AAA"
+             : m2[1] === "aa"   ? "Class AA"
+             :                   "Class A";
       }
+
+      // Divisions
+      const div = lc.match(/\b(gold|black|white)(?:\s+division)?\b/);
+      if (div) return div[1].charAt(0).toUpperCase() + div[1].slice(1) + " Division";
     }
     return "";
   }
@@ -153,7 +181,7 @@ function parseFullWorkbookCSV(rawCsvText) {
 
     const line = row.join(" ").toLowerCase();
 
-    // Block switches
+    // 1. Detect Finals Block Switch
     if (line.includes("finals") &&
         !line.includes("field & timing") &&
         !line.includes("prelims")) {
@@ -167,7 +195,7 @@ function parseFullWorkbookCSV(rawCsvText) {
       continue;
     }
 
-    // BOA inline class column
+    // 2. BOA Inline Column Detection
     const lowerRow = row.map(c => c.toLowerCase());
     if (lowerRow.includes("class") &&
         (lowerRow.includes("music performance") || lowerRow.includes("field & timing"))) {
@@ -175,14 +203,14 @@ function parseFullWorkbookCSV(rawCsvText) {
       continue;
     }
 
-    // Banner detection BEFORE any skip logic
+    // 3. Class Banner Detection (runs BEFORE all skip checks)
     const banner = detectBanner(row);
     if (banner) {
       currentClass = banner;
       continue;
     }
 
-    // Skip non-data rows
+    // 4. Skip Judge Panels, Caption Breakdown Headers, and Award Summaries
     if (
       line.includes("judge panel") ||
       (line.includes("individual") && line.includes("ensemble")) ||
@@ -194,22 +222,27 @@ function parseFullWorkbookCSV(rawCsvText) {
       continue;
     }
 
-    // Score
+    // 5. Extract Total Score
     let scoreVal = 0.0;
     for (let c = row.length - 1; c >= 0; c--) {
       const val = parseFloat(row[c]);
-      if (!isNaN(val) && val >= 35.0 && val <= 100.0) { scoreVal = val; break; }
+      if (!isNaN(val) && val >= 35.0 && val <= 100.0) {
+        scoreVal = val;
+        break;
+      }
     }
 
-    // Name
+    // 6. Extract Candidate School Name (first 4 columns)
     let candidateName = "";
     for (let c = 0; c < Math.min(row.length, 4); c++) {
       const cell = row[c];
       const cellLower = cell.toLowerCase();
+
       if (cell.length > 2 && isNaN(Number(cell))) {
         const isForbidden = forbiddenWords.some(w => cellLower === w || cellLower.startsWith(w + " "));
         const isOrdinal = /^\d+(st|nd|rd|th)\b/i.test(cellLower);
         const isJudge = /^[a-z]\.\s/.test(cellLower) || /^[a-z]\.$/.test(cellLower);
+
         if (!isForbidden && !isOrdinal && !isJudge) {
           candidateName = cell;
           break;
@@ -218,14 +251,17 @@ function parseFullWorkbookCSV(rawCsvText) {
     }
     if (!candidateName) continue;
 
+    // Deduplicate
     const targetList = currentBlock === "Finals" ? finals : prelims;
     const existingEntry = targetList.find(b => b.name.toLowerCase() === candidateName.toLowerCase());
     if (existingEntry) {
-      if (scoreVal > 0 && existingEntry.base === 0) existingEntry.base = scoreVal;
+      if (scoreVal > 0 && existingEntry.base === 0) {
+        existingEntry.base = scoreVal;
+      }
       continue;
     }
 
-    // Class assignment
+    // 7. Assign Classification
     let finalClass = "";
     if (inlineClassColIdx !== -1 && row[inlineClassColIdx] && row[inlineClassColIdx].length > 0) {
       const val = row[inlineClassColIdx].trim();
@@ -244,7 +280,7 @@ function parseFullWorkbookCSV(rawCsvText) {
   }
 
   // Diagnostic — remove once class assignment is verified
-  console.log("[Parser] bands by class:");
+  console.log(`[Parser] prelims: ${prelims.length} finals: ${finals.length}`);
   console.table(prelims.map(b => ({ class: b.classification || "(none)", name: b.name, score: b.base })));
 
   return { prelims, finals, hasFinalsInSheet: detectedFinals };
@@ -289,7 +325,7 @@ async function loadCompetitionView(eventKey, selectedYear, selectedRound) {
     return;
   }
 
-  // Populate Season Dropdown on individual competition page
+  // Populate Season Dropdown
   const uniqueYears = [...new Set(contestSeasons.map(c => c.year))].filter(Boolean).sort((a, b) => b - a);
   const yearSelect = document.getElementById("yearDropdown");
 
@@ -317,13 +353,9 @@ async function loadCompetitionView(eventKey, selectedYear, selectedRound) {
     targetTab = targetEntry.finalsTab;
   }
 
-  const tabParam = targetTab ? `&sheet=${encodeURIComponent(targetTab)}` : "";
-  const endpoint = `https://docs.google.com/spreadsheets/d/${targetEntry.id}/gviz/tq?tqx=out:csv${tabParam}&_cb=${Date.now()}`;
-
   try {
-    const response = await fetch(endpoint);
-    const rawCsv = await response.text();
-    const parsedData = parseFullWorkbookCSV(rawCsv);
+    const rows = await fetchSheetGrid(targetEntry.id, targetTab);
+    const parsedData = parseFullWorkbookCSV(rows);
 
     if (hasSeparateTabs) {
       if (selectedRound === "finals") {
