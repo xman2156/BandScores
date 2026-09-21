@@ -36,7 +36,7 @@ function setCache(key, value, ttlHours = 24) {
 }
 
 // ---------------------------------------------------------------------------
-// Low-level Gemini call (via Worker proxy — no key on the client)
+// Low-level Gemini call (via Worker proxy, with retry + model fallback)
 // ---------------------------------------------------------------------------
 async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens = 800 } = {}) {
   if (!GEMINI_PROXY_URL || GEMINI_PROXY_URL.includes("YOUR-SUBDOMAIN")) {
@@ -55,26 +55,62 @@ async function callGemini(prompt, { schema = null, temperature = 0.7, maxTokens 
     generationConfig
   };
 
-  const res = await fetch(`${GEMINI_PROXY_URL}?model=${GEMINI_MODEL}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
+  const modelsToTry = (typeof GEMINI_MODELS !== "undefined" && GEMINI_MODELS.length)
+    ? GEMINI_MODELS
+    : [GEMINI_MODEL || "gemini-flash-latest"];
 
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`AI proxy ${res.status}: ${errText.slice(0, 200)}`);
+  let lastError = null;
+
+  for (const model of modelsToTry) {
+    // Up to 3 attempts per model: immediate, +2s, +5s
+    const delays = [0, 2000, 5000];
+
+    for (let attempt = 0; attempt < delays.length; attempt++) {
+      if (delays[attempt] > 0) {
+        await new Promise(r => setTimeout(r, delays[attempt]));
+      }
+
+      try {
+        const res = await fetch(`${GEMINI_PROXY_URL}?model=${model}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+
+        // Retry on transient errors; give up immediately on client errors
+        if (res.status === 503 || res.status === 502 || res.status === 504 || res.status === 429) {
+          const errText = await res.text();
+          lastError = new Error(`${model} → ${res.status}: ${errText.slice(0, 160)}`);
+          console.warn(`[ai] ${model} attempt ${attempt + 1} failed (${res.status}), retrying...`);
+          continue;
+        }
+
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`AI proxy ${res.status}: ${errText.slice(0, 200)}`);
+        }
+
+        const data = await res.json();
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) throw new Error("Empty AI response");
+
+        try {
+          return JSON.parse(text);
+        } catch {
+          throw new Error("AI returned invalid JSON: " + text.slice(0, 150));
+        }
+      } catch (err) {
+        lastError = err;
+        // Hard errors (JSON parse, 4xx) shouldn't be retried on this model
+        if (!/50\d|429|fetch/i.test(err.message)) throw err;
+        console.warn(`[ai] ${model} attempt ${attempt + 1} threw:`, err.message);
+      }
+    }
+
+    console.warn(`[ai] ${model} exhausted — trying next model if available`);
   }
 
-  const data = await res.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error("Empty AI response");
-
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new Error("AI returned invalid JSON: " + text.slice(0, 150));
-  }
+  throw new Error(`All models unavailable. Last: ${lastError?.message || "unknown"}`);
 }
 
 // ---------------------------------------------------------------------------
