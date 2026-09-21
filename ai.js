@@ -45,14 +45,20 @@ function bandNameMatches(a, b) {
     .replace(/[,.']/g, "")
     .replace(/\s+/g, " ")
     .trim();
+
   const na = norm(a);
   const nb = norm(b);
   if (!na || !nb) return false;
   if (na === nb) return true;
-  if (na.length >= 8 && nb.length >= 8) {
-    return na.includes(nb) || nb.includes(na);
-  }
-  return false;
+
+  // Strip generic school descriptors, then require EXACT match of the cores.
+  // Prevents "Francis Howell" from matching "Francis Howell Central".
+  const generic = /\b(high|hs|school|academy|community|township|county|district|the)\b/g;
+  const strip = (s) => s.replace(generic, "").replace(/\s+/g, " ").trim();
+  const sa = strip(na);
+  const sb = strip(nb);
+
+  return sa.length > 0 && sa === sb;
 }
 
 // ---------------------------------------------------------------------------
