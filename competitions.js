@@ -69,7 +69,6 @@ async function fetchDirectorySheetData() {
   allMasterRows = (parsed.data || []).map(r => {
     const prelimsTab = (r["Prelims Tab"] || r["Tab Name"] || r["Tab"] || "").trim();
     const finalsTab  = (r["Finals Tab"] || "").trim();
-    // Prefer an explicit Date column if it exists; otherwise pull from the tab name.
     const dateFromSheet = (r["Date"] || "").trim();
     const dateFromTab = extractDateFromTab(prelimsTab);
 
@@ -120,6 +119,11 @@ async function loadCompetitionsDirectory(selectedYear = "2026") {
   const filtered = selectedYear === "all"
     ? rows
     : rows.filter(r => r.year === selectedYear.toString());
+
+  // 👇 Sort chronologically — earliest first, latest last
+  filtered.sort((a, b) =>
+    parseLocalDate(a.date, a.year) - parseLocalDate(b.date, b.year)
+  );
 
   const compCountElem = document.getElementById("compCount");
   if (compCountElem) compCountElem.textContent = filtered.length;
