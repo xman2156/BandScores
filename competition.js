@@ -1,121 +1,99 @@
 // =============================================================================
-// Competition Master Registry
+// Live Master Directory Connection
+// Fetches contest names, locations, and spreadsheet IDs live from your sheet
 // =============================================================================
 
-const competitionRegistry = {
-  lafayette: {
-    name: "Lafayette Contest of Champions",
-    location: "Wildwood, MO",
-    spreadsheetId: "10e1ghOqkzOyNt7lPOC_TRiw_WWPU2cIHVzxUK_YCPd4",
-    hasFinals: true,
-    availableYears: ["2026", "2025", "2024", "2023", "2022"],
-    tabs: {
-      "2026": "Lafayette Contest of Champions - 2026 Prelims - 9/26/26",
-      "2025": "Lafayette Contest of Champions - 2025 - 9/20/25",
-      "2024": "Lafayette Contest of Champions - 2024 - 9/28/24",
-      "2023": "Lafayette Contest of Champions - 2023 - 9/30/23",
-      "2022": "Lafayette Contest of Champions - 2022 - 9/24/22"
-    }
-  },
-  renegade: {
-    name: "Renegade Review",
-    location: "Owasso, OK",
-    spreadsheetId: "1aOD7KDcLPMYkFEkxQUcoYY48amnPMWs01s96t6yNqJo",
-    hasFinals: true,
-    availableYears: ["2026", "2025", "2024", "2023", "2022", "2021"],
-    tabs: {
-      "2026": "Renegade Review - 2026 - 10/10/26",
-      "2025": "Renegade Review - 2025 - 10/11/25",
-      "2024": "Renegade Review - 2024 - 10/12/25",
-      "2023": "Renegade Review - 2023 - 10/14/23",
-      "2022": "Renegade Review - 2022 - 10/8/22",
-      "2021": "Renegade Review - 2021 - 10/9/21"
-    }
-  },
-  boastl: {
-    name: "BOA St. Louis Super Regional",
-    location: "The Dome at America's Center, St. Louis, MO",
-    spreadsheetId: "1ipg6FG-omTfFcDLieyOO1wQbHfWLJIG1aiZAS9bZJh4",
-    hasFinals: true,
-    availableYears: ["2026", "2025", "2024", "2023", "2022", "2021"],
-    tabs: {
-      "2026": "BOA St Louis - 2026 Prelims",
-      "2025": "BOA St Louis - 2025 Finals - 10/18/25",
-      "2024": "BOA St Louis - 2024 Finals - 10/26/24",
-      "2023": "BOA St Louis - 2023 Finals - 10/28/23",
-      "2022": "BOA St Louis - 2022 Prelims - 10/14/22",
-      "2021": "BOA St Louis - 2021 Prelims - 10/22/21"
-    }
-  },
-  brokenarrow: {
-    name: "Broken Arrow Invitational",
-    location: "Broken Arrow, OK",
-    spreadsheetId: "1iatqDcFWffwrRzMKMDXUy5hAizRhfxYqGFSmOpzlQ7s",
-    hasFinals: true,
-    availableYears: ["2026", "2024", "2023", "2022"],
-    tabs: {
-      "2026": "Broken Arrow Invitational - 2026 - 9/19/26",
-      "2024": "Broken Arrow Invitational - 2024 - 10/5/24",
-      "2023": "Broken Arrow Invitational - 2023 - 10/7/23",
-      "2022": "Broken Arrow Invitational - 2022 - 10/1/22"
-    }
-  },
-  deercreek: {
-    name: "Deer Creek Invitational",
-    location: "Edmond, OK",
-    spreadsheetId: "1XTo8j1gzAYEbnaIYbGSjWaKMCqCXTM484-6Q29Gcy_k",
-    hasFinals: true,
-    availableYears: ["2026", "2025", "2024", "2023"],
-    tabs: {
-      "2026": "Deer Creek Invitational - 2026 - 9/19/26",
-      "2025": "Deer Creek Invitational - 2025 - 9/20/25",
-      "2024": "Deer Creek Invitational - 2024 - 9/21/24",
-      "2023": "Deer Creek Invitational - 2023 - 9/23/23"
-    }
-  },
-  tigerambush: {
-    name: "Tiger Ambush Classic",
-    location: "Edwardsville, IL",
-    spreadsheetId: "1-UiYEzZIc0wF-fGSwi4uQZ92Y-itl7LGE4SBK2XKJOc",
-    hasFinals: false,
-    availableYears: ["2026", "2025", "2024", "2023", "2022", "2021"],
-    tabs: {
-      "2026": "Tiger Ambush Classic - 2026 - 9/19/26",
-      "2025": "Tiger Ambush Classic - 2025 - 9/20/25",
-      "2024": "Tiger Ambush Classic - 2024 - 9/21/24",
-      "2023": "Tiger Ambush Classic - 2023 - 9/16/23",
-      "2022": "Tiger Ambush Classic - 2022 - 9/17/22",
-      "2021": "Tiger Ambush Classic - 2021 - 9/18/21"
-    }
-  },
-  memc: {
-    name: "Metro-East Marching Classic (MEMC)",
-    location: "O'Fallon, IL",
-    spreadsheetId: "1yB6emCUzTJMDxpFFtxnZrCPQ9LaiLDU85xoWH5hSOjo",
-    hasFinals: false,
-    availableYears: ["2026", "2025", "2024", "2023"],
-    tabs: {
-      "2026": "MEMC - 2026 - 9/12/26",
-      "2025": "MEMC - 2025 - 9/13/25",
-      "2024": "MEMC - 2024 - 9/7/24",
-      "2023": "MEMC - 2023 - 9/9/23"
-    }
-  },
-  rivercity: {
-    name: "River City Showcase",
-    location: "Washington, MO",
-    spreadsheetId: "1FSNl3icY0eNV0oJO5QHYfBUPt6Q9wCRW6rFQEm4VbN4",
-    hasFinals: true,
-    availableYears: ["2026", "2025"],
-    tabs: {
-      "2026": "River City Showcase - 2026 - 10/10/26",
-      "2025": "River City Showcase - 2025 - 10/11/26"
-    }
+const MASTER_INDEX_SPREADSHEET_ID = "106s_uuX5YOXAS_cXPCqj4HaO69DK8wHMWGevKUhTWd0";
+
+// =============================================================================
+// Live Directory Resolver
+// Looks up the competition entry from your Master Directory Sheet
+// =============================================================================
+async function resolveCompetitionMeta(eventKey, explicitSheetId = "") {
+  let matchedEntry = null;
+
+  try {
+    const endpoint = `https://docs.google.com/spreadsheets/d/${MASTER_INDEX_SPREADSHEET_ID}/gviz/tq?tqx=out:csv&_cb=${Date.now()}`;
+    const res = await fetch(endpoint);
+    const csv = await res.text();
+    const parsed = Papa.parse(csv, { header: true, skipEmptyLines: true });
+
+    // Normalize column headers to lowercase without spaces
+    matchedEntry = parsed.data.find(r => {
+      const rowKey = (r["Event Key"] || r["eventKey"] || r["Key"] || r["key"] || "").trim().toLowerCase();
+      const rowName = (r["Contest Name"] || r["Name"] || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+      const cleanEventKey = eventKey.toLowerCase().replace(/[^a-z0-9]/g, "");
+      return rowKey === cleanEventKey || rowName.includes(cleanEventKey);
+    });
+  } catch (err) {
+    console.warn("Could not reach Master Directory sheet, checking URL parameters:", err);
   }
-};
+
+  if (matchedEntry) {
+    const hasFinalsVal = (matchedEntry["Has Finals"] || matchedEntry["hasFinals"] || matchedEntry["Finals"] || "").toString().trim().toLowerCase();
+    const sheetId = (matchedEntry["Spreadsheet ID"] || matchedEntry["spreadsheetId"] || matchedEntry["ID"] || "").trim();
+
+    return {
+      key: eventKey,
+      name: matchedEntry["Contest Name"] || matchedEntry["Name"] || eventKey.toUpperCase(),
+      location: matchedEntry["Location"] || matchedEntry["City"] || "Contest Site",
+      spreadsheetId: sheetId || explicitSheetId,
+      hasFinals: ["yes", "true", "1"].includes(hasFinalsVal)
+    };
+  }
+
+  // Fallback: If not found in index, use URL arguments
+  return {
+    key: eventKey,
+    name: eventKey.replace(/[-_]/g, " ").toUpperCase(),
+    location: "Contest Site",
+    spreadsheetId: explicitSheetId,
+    hasFinals: false
+  };
+}
 
 // =============================================================================
-// Adaptive CSV Parser
+// Dynamic Tab & Year Discovery Engine
+// Queries the Google Sheet workbook to find all actual year tabs in that file
+// =============================================================================
+async function discoverWorkbookTabs(spreadsheetId) {
+  if (!spreadsheetId) return ["2026", "2025", "2024", "2023", "2022", "2021"].map(y => ({ title: y, year: y }));
+
+  try {
+    const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/htmlview?_cb=${Date.now()}`;
+    const res = await fetch(url);
+    const html = await res.text();
+
+    // Parse sheet button names from the htmlview navigation bar
+    const tabMatches = [...html.matchAll(/<li id="sheet-button-[^>]*>(?:<a[^>]*>)?([^<]+)(?:<\/a>)?<\/li>/gi)];
+    let discovered = [];
+
+    tabMatches.forEach(m => {
+      const title = m[1].trim();
+      if (title.toLowerCase().includes("template")) return;
+
+      // Extract 4-digit year (e.g., 2027, 2026, 2025, 2024...)
+      const yearMatch = title.match(/20\d{2}/);
+      const year = yearMatch ? yearMatch[0] : "";
+
+      if (year) {
+        discovered.push({ title, year });
+      }
+    });
+
+    if (discovered.length === 0) {
+      return ["2026", "2025", "2024", "2023", "2022", "2021"].map(y => ({ title: y, year: y }));
+    }
+
+    return discovered;
+  } catch (err) {
+    console.warn("Dynamic tab discovery failed, falling back to standard seasons:", err);
+    return ["2026", "2025", "2024", "2023", "2022", "2021"].map(y => ({ title: y, year: y }));
+  }
+}
+
+// =============================================================================
+// Adaptive CSV Parser (Zero Flight Labels, Pure Classes)
 // =============================================================================
 function parseRawRecapCSV(rawCsvText) {
   const parsed = Papa.parse(rawCsvText, { skipEmptyLines: false });
@@ -151,7 +129,7 @@ function parseRawRecapCSV(rawCsvText) {
       continue;
     }
 
-    // Detect Divisions / Classes if explicitly noted
+    // Detect Divisions & Classes if explicitly present
     if (line.includes("gold division") || line === "gold") currentClass = "Gold Division";
     else if (line.includes("black division") || line === "black") currentClass = "Black Division";
     else if (line.includes("white division") || line === "white") currentClass = "White Division";
@@ -160,7 +138,7 @@ function parseRawRecapCSV(rawCsvText) {
     else if (line.includes("class aa")) currentClass = "Class AA";
     else if (line.includes("class a")) currentClass = "Class A";
 
-    // Detect School Name
+    // Detect Candidate School Name in First 3 Columns
     let candidateName = "";
     for (let c = 0; c < Math.min(row.length, 3); c++) {
       const cell = row[c];
@@ -172,7 +150,8 @@ function parseRawRecapCSV(rawCsvText) {
         !ignoreWords.includes(cellLower) &&
         !cellLower.startsWith("judge") &&
         !cellLower.startsWith("class") &&
-        !cellLower.includes("division")
+        !cellLower.includes("division") &&
+        !cellLower.includes("stats")
       ) {
         candidateName = cell;
         break;
@@ -181,7 +160,7 @@ function parseRawRecapCSV(rawCsvText) {
 
     if (!candidateName) continue;
 
-    // Detect Total Score
+    // Scan backwards from row end for Total Score (35.0 to 100.0)
     let scoreVal = 0.0;
     for (let c = row.length - 1; c >= 0; c--) {
       const val = parseFloat(row[c]);
@@ -191,7 +170,7 @@ function parseRawRecapCSV(rawCsvText) {
       }
     }
 
-    // Build the classification label cleanly (No "Flight" words)
+    // Clean label (No "flight" terminology)
     let label = "";
     if (currentBlock && currentClass) {
       label = `${currentBlock} • ${currentClass}`;
@@ -213,66 +192,100 @@ function parseRawRecapCSV(rawCsvText) {
 }
 
 // =============================================================================
-// Routing & URL Management
+// Router & State Management
 // =============================================================================
 function getUrlParams() {
   const urlParams = new URLSearchParams(window.location.search);
   return {
     event: urlParams.get("event") || "lafayette",
+    sheetId: urlParams.get("sheetId") || "",
     year: urlParams.get("year") || "2026"
   };
 }
 
 function switchYear(newYear) {
-  const { event } = getUrlParams();
-  const newUrl = `${window.location.pathname}?event=${event}&year=${newYear}`;
+  const { event, sheetId } = getUrlParams();
+  const newUrl = `${window.location.pathname}?event=${event}&year=${newYear}${sheetId ? `&sheetId=${sheetId}` : ''}`;
   window.history.pushState({ path: newUrl }, "", newUrl);
-  loadCompetitionView(event, newYear);
+  loadCompetitionView(event, newYear, sheetId);
 }
 
 // =============================================================================
-// Dynamic Fetch & Render
+// Live Google Sheets Loader
 // =============================================================================
-async function loadCompetitionView(eventKey, year) {
-  const comp = competitionRegistry[eventKey];
-  if (!comp) {
-    document.getElementById("contestTitle").textContent = "Competition Not Found";
+async function loadCompetitionView(eventKey, selectedYear, explicitSheetId = "") {
+  // 1. Resolve competition metadata dynamically from Master Directory
+  const comp = await resolveCompetitionMeta(eventKey, explicitSheetId);
+
+  document.getElementById("contestTitle").textContent = `${comp.name} (${selectedYear})`;
+  document.getElementById("contestSubtitle").textContent = `Querying Google Drive spreadsheet for available seasons...`;
+
+  if (!comp.spreadsheetId) {
+    document.getElementById("contestSubtitle").textContent = `Spreadsheet ID not found in Master Directory for "${eventKey}".`;
+    renderUI(comp, selectedYear, [], "");
     return;
   }
 
-  // Populate the year dropdown specifically with this competition's historical years
-  const yearSelect = document.getElementById("yearDropdown");
-  yearSelect.innerHTML = "";
-  comp.availableYears.forEach(y => {
-    const opt = document.createElement("option");
-    opt.value = y;
-    opt.textContent = `${y} Season`;
-    if (y === year) opt.selected = true;
-    yearSelect.appendChild(opt);
-  });
+  // 2. Discover all tabs in that specific competition's spreadsheet
+  const availableTabs = await discoverWorkbookTabs(comp.spreadsheetId);
+  const uniqueYears = [...new Set(availableTabs.map(t => t.year))].sort((a, b) => b - a);
 
-  const tabName = comp.tabs[year] || Object.values(comp.tabs)[0];
-  const endpoint = `https://docs.google.com/spreadsheets/d/${comp.spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}`;
+  // Update Year Dropdown dynamically
+  const yearSelect = document.getElementById("yearDropdown");
+  if (yearSelect) {
+    yearSelect.innerHTML = "";
+    uniqueYears.forEach(y => {
+      const opt = document.createElement("option");
+      opt.value = y;
+      opt.textContent = `${y} Season`;
+      if (y === selectedYear) opt.selected = true;
+      yearSelect.appendChild(opt);
+    });
+    yearSelect.value = selectedYear;
+  }
+
+  // 3. Find matching tab for the selected year
+  const yearTabs = availableTabs.filter(t => t.year === selectedYear);
+  let targetTabTitle = "";
+
+  if (yearTabs.length > 0) {
+    // Prioritize Finals for completed past years, Prelims for upcoming
+    const finalsTab = yearTabs.find(t => t.title.toLowerCase().includes("finals"));
+    targetTabTitle = finalsTab ? finalsTab.title : yearTabs[0].title;
+  } else {
+    targetTabTitle = selectedYear;
+  }
+
+  // 4. Fetch CSV from that tab
+  const endpoint = `https://docs.google.com/spreadsheets/d/${comp.spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(targetTabTitle)}&_cb=${Date.now()}`;
 
   try {
     const response = await fetch(endpoint);
     const rawCsv = await response.text();
     const roster = parseRawRecapCSV(rawCsv);
-    renderUI(comp, year, roster, tabName);
+
+    // Auto-detect Finals if not explicitly defined
+    if (rawCsv.toLowerCase().includes("finals")) {
+      comp.hasFinals = true;
+    }
+
+    renderUI(comp, selectedYear, roster, targetTabTitle);
   } catch (err) {
-    console.error("Failed to load competition:", err);
-    renderUI(comp, year, [], tabName);
+    console.error("Failed to load competition data:", err);
+    renderUI(comp, selectedYear, [], targetTabTitle);
   }
 }
 
+// =============================================================================
+// DOM Renderer
+// =============================================================================
 function renderUI(comp, year, roster, tabName) {
-  // Extract date from tab name if present
-  const dateMatch = tabName.match(/\d{1,2}\/\d{1,2}\/\d{2,4}/);
+  const dateMatch = tabName ? tabName.match(/\d{1,2}\/\d{1,2}\/\d{2,4}/) : null;
   const eventDate = dateMatch ? new Date(dateMatch[0]) : new Date(`${year}-10-31`);
   const now = new Date();
   const isPast = parseInt(year) < now.getFullYear() || eventDate < now;
 
-  // Title and Header
+  // Header Elements
   document.getElementById("contestTitle").textContent = `${comp.name} (${year})`;
   document.getElementById("contestSubtitle").textContent = isPast
     ? `Official Completed Recap • ${comp.location}`
@@ -280,16 +293,16 @@ function renderUI(comp, year, roster, tabName) {
   document.getElementById("contestTag").textContent = isPast ? `${year} OFFICIAL RECAP` : `${year} UPCOMING DRAW`;
   document.getElementById("bandCountBadge").textContent = `${roster.length} Programs`;
 
-  // Determine if FHC is in this competition
+  // Dynamic FHC Detection
   const fhc = roster.find(b => b.name.toLowerCase().includes("howell central"));
   const spotlightSection = document.getElementById("fhcSpotlightSection");
   const finalsCard = document.getElementById("finalsBenchmarkCard");
 
   if (!fhc) {
-    // Hide spotlight completely if FHC is not competing here
+    // Hide spotlight card entirely if FHC did not compete at this contest
     spotlightSection.classList.add("hidden");
   } else {
-    // Show spotlight and populate data
+    // Show spotlight card when FHC is in the competition roster
     spotlightSection.classList.remove("hidden");
 
     if (isPast) {
@@ -309,29 +322,28 @@ function renderUI(comp, year, roster, tabName) {
         ? `Francis Howell Central recorded an official score of ${fhc.base.toFixed(3)} at ${comp.name}.`
         : `Francis Howell Central participated in ${comp.name} (${year}).`;
 
-      // Finals Benchmark: Show ONLY for Prelims/Finals formats
+      // Finals Benchmark: Shown ONLY for multi-round Prelims/Finals formats
       if (comp.hasFinals) {
         finalsCard.classList.remove("hidden");
         document.getElementById("statLabel3").textContent = "Finals Benchmark";
-        // Calculate the bubble score (e.g., 10th or 12th band)
-        const bubbleScore = sorted.length >= 10 ? sorted[9].base.toFixed(3) : sorted[sorted.length - 1].base.toFixed(3);
+        const bubbleScore = sorted.length >= 12 ? sorted[11].base.toFixed(3) : (sorted.length >= 10 ? sorted[9].base.toFixed(3) : "--");
         document.getElementById("fhcStatCutoff").textContent = bubbleScore;
-        document.getElementById("fhcStatCutoffSub").textContent = "Advance Threshold";
+        document.getElementById("fhcStatCutoffSub").textContent = "Score to Advance";
       } else {
         finalsCard.classList.add("hidden");
       }
     } else {
-      // Future competition (Placeholders awaiting Gemini API integration)
+      // Future Contest: Placeholders reserved for Gemini API projections
       document.getElementById("statLabel1").textContent = "Historical Mark";
       document.getElementById("statLabel2").textContent = "Projected Standing";
       document.getElementById("fhcStatPeak").textContent = "--";
-      document.getElementById("fhcStatPeakSub").textContent = "Season Peak";
+      document.getElementById("fhcStatPeakSub").textContent = "Season Mark";
 
       document.getElementById("fhcStatRank").textContent = "Pending";
       document.getElementById("fhcStatRankSub").textContent = "Gemini API Projection";
 
       document.getElementById("fhcEventHeadline").textContent = "Contest Outlook";
-      document.getElementById("fhcEventSummary").textContent = `Draw locked. Projections will be generated via the Gemini API.`;
+      document.getElementById("fhcEventSummary").textContent = `Draw confirmed. Projections will be generated via the Gemini API.`;
 
       if (comp.hasFinals) {
         finalsCard.classList.remove("hidden");
@@ -390,13 +402,16 @@ function renderUI(comp, year, roster, tabName) {
   lucide.createIcons();
 }
 
+// =============================================================================
+// Browser History Listener & Initializer
+// =============================================================================
 window.addEventListener("popstate", () => {
-  const { event, year } = getUrlParams();
-  loadCompetitionView(event, year);
+  const { event, year, sheetId } = getUrlParams();
+  loadCompetitionView(event, year, sheetId);
 });
 
 document.addEventListener("DOMContentLoaded", () => {
   lucide.createIcons();
-  const { event, year } = getUrlParams();
-  loadCompetitionView(event, year);
+  const { event, year, sheetId } = getUrlParams();
+  loadCompetitionView(event, year, sheetId);
 });
