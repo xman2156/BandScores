@@ -589,6 +589,12 @@ async function gatherFieldHistory(comp, allEntries, roster) {
   const totalRows = Object.values(history).reduce((sum, arr) => sum + arr.length, 0);
   console.log(`[gatherFieldHistory] ${sources.length} sheets → ${totalRows} band-score rows across ${roster.length} bands`);
 
+  // TEMP DIAGNOSTIC — dump FHC's collected history
+  const fhcHistory = history["Francis Howell Central"];
+  console.log("[gatherFieldHistory] FHC history:", fhcHistory);
+  console.log("[gatherFieldHistory] total bands with history:", Object.values(history).filter(a => a.length > 0).length);
+  console.log("[gatherFieldHistory] total bands with NO history:", Object.values(history).filter(a => a.length === 0).length);
+
   return history;
 }
 
