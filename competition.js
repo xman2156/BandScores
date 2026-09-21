@@ -4,8 +4,6 @@
 
 const MASTER_INDEX_SPREADSHEET_ID = "106s_uuX5YOXAS_cXPCqj4HaO69DK8wHMWGevKUhTWd0";
 
-// How long cached sheet data stays valid. Sheets only update once a week,
-// so 24h is generous. Users can force a refresh via ?clearcache=1
 const SHEET_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 let activeWorkbookData = {
@@ -100,15 +98,13 @@ async function fetchMasterDirectory() {
 // =============================================================================
 // Sheet Fetcher — 3-tier cache (in-memory → localStorage → network)
 // =============================================================================
-const _sheetCache = new Map();   // layer 4: per-page-load
+const _sheetCache = new Map();
 
 async function fetchSheetGrid(sheetId, sheetName) {
   const memKey = `${sheetId}::${sheetName || ""}`;
 
-  // --- Layer 4: in-memory ---
   if (_sheetCache.has(memKey)) return _sheetCache.get(memKey);
 
-  // --- Layer 3: localStorage ---
   const lsKey = `sheet_${memKey}`;
   try {
     const raw = localStorage.getItem(lsKey);
@@ -125,7 +121,6 @@ async function fetchSheetGrid(sheetId, sheetName) {
     console.warn("[sheet-cache] localStorage read failed:", e);
   }
 
-  // --- Network ---
   console.log(`[sheet-cache] MISS ${sheetName || sheetId}`);
   const params = sheetName ? `&sheet=${encodeURIComponent(sheetName)}` : "";
   const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv${params}&_cb=${Date.now()}`;
@@ -138,8 +133,6 @@ async function fetchSheetGrid(sheetId, sheetName) {
 
   _sheetCache.set(memKey, rows);
 
-  // Persist to localStorage. If we hit a quota error, prune old sheet entries
-  // and try once more.
   const payload = JSON.stringify({ value: rows, expires: Date.now() + SHEET_CACHE_TTL_MS });
   try {
     localStorage.setItem(lsKey, payload);
@@ -256,10 +249,18 @@ function parseFullWorkbookCSV(rows) {
       (line.includes("award") && !row.some(c => parseFloat(c) >= 35.0))
     ) continue;
 
+    // --- Score extraction (layout-aware) ---
     let scoreVal = 0.0;
-    for (let c = row.length - 1; c >= 0; c--) {
-      const val = parseFloat(row[c]);
-      if (!isNaN(val) && val >= 35.0 && val <= 100.0) { scoreVal = val; break; }
+    const layout = sheetLayout || detectLayout(row);
+    if (layout && typeof layout.grandTotal === "number" && layout.grandTotal < row.length) {
+      const v = parseFloat(row[layout.grandTotal]);
+      if (!isNaN(v) && v >= 35.0 && v <= 100.0) scoreVal = v;
+    }
+    if (scoreVal === 0.0) {
+      for (let c = row.length - 1; c >= 0; c--) {
+        const val = parseFloat(row[c]);
+        if (!isNaN(val) && val >= 35.0 && val <= 100.0) { scoreVal = val; break; }
+      }
     }
 
     let candidateName = "";
@@ -338,14 +339,11 @@ async function loadCompetitionView(eventKey, selectedYear, selectedRound) {
   const rosterBody = document.getElementById("rosterTableBody");
   const leaderboardBody = document.getElementById("leaderboardTableBody");
 
-  // Optional ?clearcache=1 to force fresh sheet fetches
   if (new URLSearchParams(window.location.search).has("clearcache")) {
     clearAllCaches();
   }
 
   activeFieldProjections = null;
-  // NOTE: we deliberately do NOT clear _sheetCache anymore — it survives
-  // navigation within a page session so overlapping sheets aren't refetched.
 
   let allEntries;
   try {
@@ -589,12 +587,6 @@ async function gatherFieldHistory(comp, allEntries, roster) {
   const totalRows = Object.values(history).reduce((sum, arr) => sum + arr.length, 0);
   console.log(`[gatherFieldHistory] ${sources.length} sheets → ${totalRows} band-score rows across ${roster.length} bands`);
 
-  // TEMP DIAGNOSTIC — dump FHC's collected history
-  const fhcHistory = history["Francis Howell Central"];
-  console.log("[gatherFieldHistory] FHC history:", fhcHistory);
-  console.log("[gatherFieldHistory] total bands with history:", Object.values(history).filter(a => a.length > 0).length);
-  console.log("[gatherFieldHistory] total bands with NO history:", Object.values(history).filter(a => a.length === 0).length);
-
   return history;
 }
 
@@ -670,9 +662,6 @@ function applyFieldProjections(result, roster, comp, selectedRound, contestSeaso
   }
 }
 
-// =============================================================================
-// Populate Upcoming Spotlight Tiles from Field Projections
-// =============================================================================
 function populateUpcomingSpotlightTiles(comp, currentRound) {
   const roster = activeWorkbookData.prelims.length > 0
     ? activeWorkbookData.prelims
@@ -723,9 +712,6 @@ function showRoundToggle() {
   return rc && !rc.classList.contains("hidden");
 }
 
-// =============================================================================
-// AI Enrichment — FHC Contest Outlook text (upcoming)
-// =============================================================================
 async function enrichFHCSpotlightUpcoming(comp, contestSeasons, allEntries) {
   const headlineEl = document.getElementById("fhcEventHeadline");
   const summaryEl = document.getElementById("fhcEventSummary");
