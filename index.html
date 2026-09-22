@@ -105,45 +105,6 @@
         <div>
           <div class="flex items-center justify-between mb-3">
             <h3 class="tile-title">
-              <i data-lucide="trending-up" class="w-4 h-4 text-emerald-400"></i>
-              Projected Score Growth
-            </h3>
-            <span class="badge-slate">BOA Model</span>
-          </div>
-          <p class="text-xs text-slate-400 mb-3">
-            Predictive seasonal model factoring historical September-to-October compression deltas:
-          </p>
-          <div class="space-y-2 text-xs" id="projectionsList">
-            <div class="p-4 text-center text-slate-500 text-xs font-mono border border-dashed border-slate-700 rounded-lg">
-              Projections coming soon — powered by Gemini API.
-            </div>
-          </div>
-        </div>
-        <p class="tile-footer">Dynamic model: recalibrates automatically when sheet inputs update.</p>
-      </section>
-
-      <section class="dashboard-tile md:col-span-2">
-        <div>
-          <div class="flex items-center justify-between mb-2">
-            <h3 class="tile-title">
-              <i data-lucide="line-chart" class="w-4 h-4 text-blue-400"></i>
-              Francis Howell Central: BOA STL Trajectory
-            </h3>
-            <span class="badge-slate">Multi-Year Archive</span>
-          </div>
-          <p class="text-xs text-slate-400 mb-4">
-            Solid line: verified historical BOA STL Prelims scores. Dashed violet: projected current-season result.
-          </p>
-          <div class="chart-container">
-            <canvas id="fhcChart"></canvas>
-          </div>
-        </div>
-      </section>
-
-      <section class="dashboard-tile">
-        <div>
-          <div class="flex items-center justify-between mb-3">
-            <h3 class="tile-title">
               <i data-lucide="database" class="w-4 h-4 text-amber-400"></i>
               Data Pipe Status
             </h3>
@@ -165,6 +126,27 @@
         </div>
         <div class="mt-4 pt-3 border-t border-slate-800 text-[11px] text-slate-500">
           Tailored for high-density analytics on desktop, tablet, and mobile.
+        </div>
+      </section>
+
+      <section class="dashboard-tile md:col-span-2 xl:col-span-3">
+        <div>
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-2 gap-3">
+            <h3 class="tile-title">
+              <i data-lucide="line-chart" class="w-4 h-4 text-blue-400"></i>
+              Francis Howell Central: <span id="chartSubtitle">BOA STL Trajectory</span>
+            </h3>
+            <select id="chartModeSelect" onchange="setChartMode(this.value)" class="bg-slate-900 border border-slate-700 text-slate-200 font-bold text-xs rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+              <option value="boa">BOA STL Trajectory</option>
+              <option value="season">2026 Season</option>
+            </select>
+          </div>
+          <p id="chartDescription" class="text-xs text-slate-400 mb-4">
+            Solid line: verified historical BOA STL Prelims scores. Dashed violet: projected current-season result.
+          </p>
+          <div class="chart-container">
+            <canvas id="fhcChart"></canvas>
+          </div>
         </div>
       </section>
 

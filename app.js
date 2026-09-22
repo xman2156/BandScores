@@ -3,9 +3,11 @@
 // =============================================================================
 
 let fhcChartInstance = null;
-let fhcChartHistorical = null;
-let fhcChartProjection = null;
-let fhcChartBoaUpcoming = null;
+let fhcChartMode = "boa";
+let fhcChartData = {
+  boa: { labels: [], scores: [], projectedFrom: -1 },
+  season: { labels: [], scores: [], projectedFrom: -1 }
+};
 
 function formatShortDate(dateStr) {
   const d = dateStr instanceof Date ? dateStr : parseLocalDate(dateStr, new Date().getFullYear());
@@ -13,14 +15,12 @@ function formatShortDate(dateStr) {
   return `${months[d.getMonth()]} ${d.getDate()}`;
 }
 
-// Does the given roster contain FHC?
 function rosterHasFHC(roster) {
   return roster.some(b => bandNameMatches(b.name, "Francis Howell Central"));
 }
 
 // ---------------------------------------------------------------------------
-// Spotlight Tiles (FHC) — reads from cached projections, generates on miss.
-// Only includes contests where FHC is on the roster / results list.
+// Spotlight Tiles (FHC)
 // ---------------------------------------------------------------------------
 async function loadSpotlightTiles() {
   const container = document.getElementById("spotlightTiles");
@@ -52,7 +52,6 @@ async function loadSpotlightTiles() {
   const now = new Date();
   const withDates = allEntries.map(e => ({ ...e, dateObj: parseLocalDate(e.date, e.year) }));
 
-  // ---- 1. Most recent completed contests FHC actually attended ----
   const completedSorted = withDates
     .filter(e => e.dateObj < now)
     .sort((a, b) => b.dateObj - a.dateObj);
@@ -64,10 +63,7 @@ async function loadSpotlightTiles() {
       const rows = await fetchSheetGrid(comp.id, comp.prelimsTab);
       const parsed = parseFullWorkbookCSV(rows);
       const roster = parsed.prelims;
-      if (!rosterHasFHC(roster)) {
-        console.log(`[spotlight] ${comp.year} ${comp.name}: FHC not in results, skipping`);
-        continue;
-      }
+      if (!rosterHasFHC(roster)) continue;
       const sorted = [...roster].sort((a, b) => b.base - a.base);
       const idx = sorted.findIndex(b => b.name.toLowerCase().includes("howell central"));
       const fhc = sorted[idx];
@@ -82,7 +78,6 @@ async function loadSpotlightTiles() {
     }
   }
 
-  // ---- 2. Soonest upcoming contests FHC is registered for ----
   const upcomingSorted = withDates
     .filter(e => e.dateObj >= now)
     .sort((a, b) => a.dateObj - b.dateObj);
@@ -93,17 +88,13 @@ async function loadSpotlightTiles() {
     try {
       const rows = await fetchSheetGrid(comp.id, comp.prelimsTab);
       const parsed = parseFullWorkbookCSV(rows);
-      if (!rosterHasFHC(parsed.prelims)) {
-        console.log(`[spotlight] ${comp.year} ${comp.name}: FHC not registered, skipping`);
-        continue;
-      }
+      if (!rosterHasFHC(parsed.prelims)) continue;
       upcomingForFHC.push(comp);
     } catch (err) {
       console.warn("[spotlight] Skipping upcoming", comp.name, err);
     }
   }
 
-  // ---- 3. Assemble final tile list ----
   const tiles = [
     ...recentCompleted.map(x => ({ comp: x.comp, isPast: true, result: x.result })),
     ...upcomingForFHC.map(comp => ({ comp, isPast: false, result: null }))
@@ -120,7 +111,6 @@ async function loadSpotlightTiles() {
     return;
   }
 
-  // ---- 4. Render tile shells ----
   container.innerHTML = "";
   tiles.forEach(({ comp, isPast }) => {
     const tile = document.createElement("div");
@@ -137,7 +127,6 @@ async function loadSpotlightTiles() {
     container.appendChild(tile);
   });
 
-  // ---- 5. Fill tiles sequentially so shared sheet fetches are reused ----
   for (const { comp, isPast, result } of tiles) {
     const tile = container.querySelector(`[data-key="${comp.key}_${comp.year}"]`);
     if (!tile) continue;
@@ -299,12 +288,9 @@ async function loadUpcomingContests() {
 }
 
 // ---------------------------------------------------------------------------
-// FHC BOA STL Trajectory Chart (with projected 2026 point)
+// Chart — loads both datasets and renders the selected one
 // ---------------------------------------------------------------------------
 async function loadFhcChart() {
-  const ctx = document.getElementById("fhcChart")?.getContext("2d");
-  if (!ctx) return;
-
   let directory;
   try {
     directory = await fetchMasterDirectory();
@@ -314,105 +300,191 @@ async function loadFhcChart() {
   }
 
   const now = new Date();
+
+  // ---------- BOA dataset ----------
   const boaAll = directory
     .filter(e => e.key === "boastl")
     .map(e => ({ ...e, dateObj: parseLocalDate(e.date, e.year) }));
 
-  const historical = boaAll
+  const boaPast = boaAll
     .filter(e => e.dateObj < now)
     .sort((a, b) => parseInt(a.year, 10) - parseInt(b.year, 10));
-
-  const upcoming = boaAll
+  const boaNext = boaAll
     .filter(e => e.dateObj >= now)
-    .sort((a, b) => parseInt(a.year, 10) - parseInt(b.year, 10));
+    .sort((a, b) => parseInt(a.year, 10) - parseInt(b.year, 10))[0];
 
-  // Fetch historical scores
-  const labels = [];
-  const totals = [];
-  for (const entry of historical) {
+  const boaLabels = [];
+  const boaScores = [];
+  for (const entry of boaPast) {
     try {
       const rows = await fetchSheetGrid(entry.id, entry.prelimsTab);
       const parsed = parseFullWorkbookCSV(rows);
       const fhc = parsed.prelims.find(b => bandNameMatches(b.name, "Francis Howell Central"));
       if (fhc && fhc.base > 0) {
-        labels.push(`${entry.year} Prelims`);
-        totals.push(fhc.base);
-        console.log(`[loadFhcChart] ${entry.year}: ${fhc.base}`);
+        boaLabels.push(`${entry.year}`);
+        boaScores.push(fhc.base);
       }
     } catch (e) {
-      console.warn(`[loadFhcChart] Skipping ${entry.year}:`, e);
+      console.warn(`[loadFhcChart] Skipping BOA ${entry.year}:`, e);
     }
   }
 
-  fhcChartHistorical = { labels, totals };
-  fhcChartBoaUpcoming = upcoming[0] || null;
-  fhcChartProjection = fhcChartBoaUpcoming ? getCachedProjectionResult(fhcChartBoaUpcoming) : null;
+  let boaProjectedFrom = -1;
+  if (boaNext) {
+    const proj = getCachedProjectionResult(boaNext);
+    if (proj && proj.fhcProjection) {
+      boaLabels.push(`${boaNext.year} Proj.`);
+      boaScores.push(proj.fhcProjection.projectedScore);
+      boaProjectedFrom = boaLabels.length - 1;
+    }
+  }
 
-  // Render immediately with historical + cached projection (if any)
+  fhcChartData.boa = { labels: boaLabels, scores: boaScores, projectedFrom: boaProjectedFrom };
+
+  // ---------- 2026 Season dataset ----------
+  const seasonAll = directory
+    .filter(e => e.year === "2026")
+    .map(e => ({ ...e, dateObj: parseLocalDate(e.date, e.year) }))
+    .sort((a, b) => a.dateObj - b.dateObj);
+
+  const seasonLabels = [];
+  const seasonScores = [];
+  let seasonProjectedFrom = -1;
+
+  for (const comp of seasonAll) {
+    try {
+      const rows = await fetchSheetGrid(comp.id, comp.prelimsTab);
+      const parsed = parseFullWorkbookCSV(rows);
+      const fhc = parsed.prelims.find(b => bandNameMatches(b.name, "Francis Howell Central"));
+      if (!fhc) continue;
+
+      const isPast = comp.dateObj < now;
+      const label = shortContestLabel(comp);
+
+      if (isPast && fhc.base > 0) {
+        seasonLabels.push(label);
+        seasonScores.push(fhc.base);
+      } else if (!isPast) {
+        const proj = getCachedProjectionResult(comp);
+        if (proj && proj.fhcProjection) {
+          if (seasonProjectedFrom === -1) seasonProjectedFrom = seasonLabels.length;
+          seasonLabels.push(`${label} Proj.`);
+          seasonScores.push(proj.fhcProjection.projectedScore);
+        }
+      }
+    } catch (e) {
+      console.warn(`[loadFhcChart] Skipping season ${comp.name}:`, e);
+    }
+  }
+
+  fhcChartData.season = { labels: seasonLabels, scores: seasonScores, projectedFrom: seasonProjectedFrom };
+
+  // ---------- Initial render ----------
   renderFhcChart();
 
-  // If no cached projection for the upcoming BOA STL, generate it in the
-  // background and re-render once ready. This keeps the chart interactive
-  // without blocking on a 30-60s AI call.
-  if (fhcChartBoaUpcoming && !fhcChartProjection) {
-    console.log(`[loadFhcChart] Generating ${fhcChartBoaUpcoming.year} BOA STL projection in background...`);
+  // ---------- Background: generate BOA projection if missing ----------
+  if (boaNext && boaProjectedFrom === -1) {
+    console.log(`[loadFhcChart] Generating ${boaNext.year} BOA STL projection in background...`);
     try {
-      await generateAndCacheProjection(fhcChartBoaUpcoming, directory);
-      fhcChartProjection = getCachedProjectionResult(fhcChartBoaUpcoming);
-      if (fhcChartProjection) {
-        console.log(`[loadFhcChart] Projection ready: ${fhcChartProjection.fhcProjection.projectedScore}`);
+      await generateAndCacheProjection(boaNext, directory);
+      const proj = getCachedProjectionResult(boaNext);
+      if (proj && proj.fhcProjection) {
+        fhcChartData.boa.labels.push(`${boaNext.year} Proj.`);
+        fhcChartData.boa.scores.push(proj.fhcProjection.projectedScore);
+        fhcChartData.boa.projectedFrom = fhcChartData.boa.labels.length - 1;
+
+        // Also fold BOA into the season dataset if it isn't there yet
+        const alreadyInSeason = fhcChartData.season.labels.some(l => l.startsWith("BOA STL"));
+        if (!alreadyInSeason) {
+          const newIdx = fhcChartData.season.labels.length;
+          if (fhcChartData.season.projectedFrom === -1) fhcChartData.season.projectedFrom = newIdx;
+          fhcChartData.season.labels.push(`${boaNext.year} Proj.`);
+          fhcChartData.season.scores.push(proj.fhcProjection.projectedScore);
+        }
+
+        console.log(`[loadFhcChart] BOA projection ready: ${proj.fhcProjection.projectedScore}`);
         renderFhcChart();
       }
     } catch (e) {
-      console.warn("[loadFhcChart] Projection generation failed:", e);
+      console.warn("[loadFhcChart] BOA projection failed:", e);
     }
   }
 }
 
+function setChartMode(mode) {
+  fhcChartMode = mode;
+
+  const subtitleEl = document.getElementById("chartSubtitle");
+  const descEl = document.getElementById("chartDescription");
+  if (subtitleEl) subtitleEl.textContent = mode === "boa" ? "BOA STL Trajectory" : "2026 Season Progression";
+  if (descEl) {
+    descEl.textContent = mode === "boa"
+      ? "Solid line: verified historical BOA STL Prelims scores. Dashed violet: projected current-season result."
+      : "Solid line: completed 2026 contest scores. Dashed violet: AI-projected scores for upcoming contests. Competitions FHC did not attend are omitted.";
+  }
+
+  renderFhcChart();
+}
+
 function renderFhcChart() {
   const ctx = document.getElementById("fhcChart")?.getContext("2d");
-  if (!ctx || !fhcChartHistorical) return;
+  if (!ctx) return;
 
-  const labels = [...fhcChartHistorical.labels];
-  const totals = [...fhcChartHistorical.totals];
-  let projectedIndex = -1;
-
-  if (fhcChartProjection && fhcChartProjection.fhcProjection && fhcChartBoaUpcoming) {
-    labels.push(`${fhcChartBoaUpcoming.year} Proj.`);
-    totals.push(fhcChartProjection.fhcProjection.projectedScore);
-    projectedIndex = labels.length - 1;
-  }
-
-  if (labels.length === 0) {
-    labels.push("No BOA STL data yet");
-    totals.push(0);
-  }
+  const data = fhcChartData[fhcChartMode];
 
   if (fhcChartInstance) fhcChartInstance.destroy();
 
   const historicalBorder = "#38bdf8";
   const projectedBorder = "#a78bfa";
 
+  if (!data || data.labels.length === 0) {
+    fhcChartInstance = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: ["No data yet"],
+        datasets: [{
+          label: "—",
+          data: [0],
+          borderColor: "#334155",
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: "#1e293b" }, ticks: { color: "#64748b" } },
+          y: { grid: { color: "#1e293b" }, ticks: { color: "#64748b" } }
+        }
+      }
+    });
+    return;
+  }
+
+  const { labels, scores, projectedFrom } = data;
+  const projStart = projectedFrom;
+
   fhcChartInstance = new Chart(ctx, {
     type: "line",
     data: {
       labels,
       datasets: [{
-        label: "BOA STL Prelims Score",
-        data: totals,
+        label: fhcChartMode === "boa" ? "BOA STL Prelims Score" : "2026 Season Score",
+        data: scores,
         borderColor: historicalBorder,
         backgroundColor: "rgba(56, 189, 248, 0.1)",
         borderWidth: 3,
         tension: 0.3,
         fill: true,
         segment: {
-          borderColor: (s) => (projectedIndex >= 0 && s.p1DataIndex === projectedIndex ? projectedBorder : historicalBorder),
-          borderDash: (s) => (projectedIndex >= 0 && s.p1DataIndex === projectedIndex ? [7, 5] : undefined)
+          borderColor: (s) => (projStart >= 0 && s.p1DataIndex >= projStart ? projectedBorder : historicalBorder),
+          borderDash: (s) => (projStart >= 0 && s.p1DataIndex >= projStart ? [7, 5] : undefined)
         },
-        pointBackgroundColor: (p) => (projectedIndex >= 0 && p.dataIndex === projectedIndex ? projectedBorder : historicalBorder),
-        pointBorderColor: (p) => (projectedIndex >= 0 && p.dataIndex === projectedIndex ? projectedBorder : historicalBorder),
-        pointRadius: (p) => (projectedIndex >= 0 && p.dataIndex === projectedIndex ? 7 : 3),
-        pointHoverRadius: (p) => (projectedIndex >= 0 && p.dataIndex === projectedIndex ? 9 : 5)
+        pointBackgroundColor: (p) => (projStart >= 0 && p.dataIndex >= projStart ? projectedBorder : historicalBorder),
+        pointBorderColor: (p) => (projStart >= 0 && p.dataIndex >= projStart ? projectedBorder : historicalBorder),
+        pointRadius: (p) => (projStart >= 0 && p.dataIndex >= projStart ? 7 : 4),
+        pointHoverRadius: (p) => (projStart >= 0 && p.dataIndex >= projStart ? 9 : 6)
       }]
     },
     options: {
@@ -425,7 +497,7 @@ function renderFhcChart() {
         tooltip: {
           callbacks: {
             label: (item) => {
-              const isProj = projectedIndex >= 0 && item.dataIndex === projectedIndex;
+              const isProj = projStart >= 0 && item.dataIndex >= projStart;
               return ` ${isProj ? "Projected: " : "Score: "}${item.parsed.y.toFixed(3)}`;
             }
           }
@@ -484,6 +556,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
   loadRecentScores();
   loadUpcomingContests();
-  loadSpotlightTiles();
+
+  // Render chart immediately with cached data
   loadFhcChart();
+
+  // After spotlight runs (which generates projections for the nearest upcoming
+  // contests), re-render the chart so newly cached projections appear.
+  loadSpotlightTiles().then(() => {
+    console.log("[bootstrap] Spotlight complete, refreshing chart...");
+    loadFhcChart();
+  });
 });
