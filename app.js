@@ -10,48 +10,6 @@ function formatShortDate(dateStr) {
   return `${months[d.getMonth()]} ${d.getDate()}`;
 }
 
-// Lightweight parser for the recent-scores tile — total score + name only
-function parseSheetForDashboard(rows) {
-  const out = [];
-  const forbidden = ["music performance","visual performance","general effect","judge panel",
-    "individual","ensemble","total","order","school name","field & timing","prelims","finals",
-    "rating","score","music","visual","panel","outstanding","oustanding","awards","class",
-    "rank","division","penalty"];
-
-  for (const rawRow of rows) {
-    const row = (rawRow || []).map(c => (c || "").toString().trim().replace(/\u00a0/g, " "));
-    if (row.every(c => c === "")) continue;
-
-    const line = row.join(" ").toLowerCase();
-    if (line.includes("judge panel") || line.includes("school name")) continue;
-    if (line.includes("individual") && line.includes("ensemble")) continue;
-    if (line.includes("finals") && !line.includes("prelims") && !line.includes("field & timing")) break;
-
-    let scoreVal = 0;
-    for (let c = row.length - 1; c >= 0; c--) {
-      const v = parseFloat(row[c]);
-      if (!isNaN(v) && v >= 35 && v <= 100) { scoreVal = v; break; }
-    }
-    if (scoreVal === 0) continue;
-
-    let name = "";
-    for (let c = 0; c < Math.min(row.length, 4); c++) {
-      const cell = row[c];
-      const lc = cell.toLowerCase();
-      if (cell.length > 2 && isNaN(Number(cell))) {
-        const isForbidden = forbidden.some(w => lc === w || lc.startsWith(w + " "));
-        const isOrdinal = /^\d+(st|nd|rd|th)\b/i.test(lc);
-        if (!isForbidden && !isOrdinal) { name = cell; break; }
-      }
-    }
-    if (!name) continue;
-
-    if (out.find(b => b.name.toLowerCase() === name.toLowerCase())) continue;
-    out.push({ name, base: scoreVal });
-  }
-  return out;
-}
-
 // Does the given roster contain FHC?
 function rosterHasFHC(roster) {
   return roster.some(b => bandNameMatches(b.name, "Francis Howell Central"));
@@ -268,8 +226,8 @@ async function loadRecentScores() {
 
     const recent = completed[0];
     const rows = await fetchSheetGrid(recent.id, recent.prelimsTab);
-    const parsed = parseSheetForDashboard(rows);
-    const top = parsed.sort((a, b) => b.base - a.base).slice(0, 7);
+    const parsed = parseFullWorkbookCSV(rows);
+    const top = [...parsed.prelims].sort((a, b) => b.base - a.base).slice(0, 7);
 
     if (titleEl) titleEl.textContent = `Recent Scores (${formatShortDate(recent.date)})`;
 
@@ -354,14 +312,19 @@ async function loadFhcChart() {
       .filter(e => e.dateObj < new Date())
       .sort((a, b) => parseInt(a.year, 10) - parseInt(b.year, 10));
 
+    console.log(`[loadFhcChart] Processing ${boaEntries.length} BOA STL entries`);
+
     for (const entry of boaEntries) {
       try {
         const rows = await fetchSheetGrid(entry.id, entry.prelimsTab);
-        const parsed = parseSheetForDashboard(rows);
-        const fhc = parsed.find(b => b.name.toLowerCase().includes("howell central"));
-        if (fhc) {
+        const parsed = parseFullWorkbookCSV(rows);
+        const fhc = parsed.prelims.find(b => bandNameMatches(b.name, "Francis Howell Central"));
+        if (fhc && fhc.base > 0) {
           labels.push(`${entry.year} Prelims`);
           totals.push(fhc.base);
+          console.log(`[loadFhcChart] ${entry.year}: ${fhc.base}`);
+        } else {
+          console.log(`[loadFhcChart] ${entry.year}: FHC not found or no score`);
         }
       } catch (e) {
         console.warn(`[loadFhcChart] Skipping ${entry.year}:`, e);
