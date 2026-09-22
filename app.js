@@ -3,6 +3,9 @@
 // =============================================================================
 
 let fhcChartInstance = null;
+let fhcChartHistorical = null;
+let fhcChartProjection = null;
+let fhcChartBoaUpcoming = null;
 
 function formatShortDate(dateStr) {
   const d = dateStr instanceof Date ? dateStr : parseLocalDate(dateStr, new Date().getFullYear());
@@ -296,66 +299,121 @@ async function loadUpcomingContests() {
 }
 
 // ---------------------------------------------------------------------------
-// FHC BOA STL Trajectory Chart
+// FHC BOA STL Trajectory Chart (with projected 2026 point)
 // ---------------------------------------------------------------------------
 async function loadFhcChart() {
   const ctx = document.getElementById("fhcChart")?.getContext("2d");
   if (!ctx) return;
 
-  let labels = [], totals = [];
-
+  let directory;
   try {
-    const directory = await fetchMasterDirectory();
-    const boaEntries = directory
-      .filter(e => e.key === "boastl")
-      .map(e => ({ ...e, dateObj: parseLocalDate(e.date, e.year) }))
-      .filter(e => e.dateObj < new Date())
-      .sort((a, b) => parseInt(a.year, 10) - parseInt(b.year, 10));
-
-    console.log(`[loadFhcChart] Processing ${boaEntries.length} BOA STL entries`);
-
-    for (const entry of boaEntries) {
-      try {
-        const rows = await fetchSheetGrid(entry.id, entry.prelimsTab);
-        const parsed = parseFullWorkbookCSV(rows);
-        const fhc = parsed.prelims.find(b => bandNameMatches(b.name, "Francis Howell Central"));
-        if (fhc && fhc.base > 0) {
-          labels.push(`${entry.year} Prelims`);
-          totals.push(fhc.base);
-          console.log(`[loadFhcChart] ${entry.year}: ${fhc.base}`);
-        } else {
-          console.log(`[loadFhcChart] ${entry.year}: FHC not found or no score`);
-        }
-      } catch (e) {
-        console.warn(`[loadFhcChart] Skipping ${entry.year}:`, e);
-      }
-    }
+    directory = await fetchMasterDirectory();
   } catch (err) {
     console.error("[loadFhcChart] Directory fetch failed:", err);
+    return;
+  }
+
+  const now = new Date();
+  const boaAll = directory
+    .filter(e => e.key === "boastl")
+    .map(e => ({ ...e, dateObj: parseLocalDate(e.date, e.year) }));
+
+  const historical = boaAll
+    .filter(e => e.dateObj < now)
+    .sort((a, b) => parseInt(a.year, 10) - parseInt(b.year, 10));
+
+  const upcoming = boaAll
+    .filter(e => e.dateObj >= now)
+    .sort((a, b) => parseInt(a.year, 10) - parseInt(b.year, 10));
+
+  // Fetch historical scores
+  const labels = [];
+  const totals = [];
+  for (const entry of historical) {
+    try {
+      const rows = await fetchSheetGrid(entry.id, entry.prelimsTab);
+      const parsed = parseFullWorkbookCSV(rows);
+      const fhc = parsed.prelims.find(b => bandNameMatches(b.name, "Francis Howell Central"));
+      if (fhc && fhc.base > 0) {
+        labels.push(`${entry.year} Prelims`);
+        totals.push(fhc.base);
+        console.log(`[loadFhcChart] ${entry.year}: ${fhc.base}`);
+      }
+    } catch (e) {
+      console.warn(`[loadFhcChart] Skipping ${entry.year}:`, e);
+    }
+  }
+
+  fhcChartHistorical = { labels, totals };
+  fhcChartBoaUpcoming = upcoming[0] || null;
+  fhcChartProjection = fhcChartBoaUpcoming ? getCachedProjectionResult(fhcChartBoaUpcoming) : null;
+
+  // Render immediately with historical + cached projection (if any)
+  renderFhcChart();
+
+  // If no cached projection for the upcoming BOA STL, generate it in the
+  // background and re-render once ready. This keeps the chart interactive
+  // without blocking on a 30-60s AI call.
+  if (fhcChartBoaUpcoming && !fhcChartProjection) {
+    console.log(`[loadFhcChart] Generating ${fhcChartBoaUpcoming.year} BOA STL projection in background...`);
+    try {
+      await generateAndCacheProjection(fhcChartBoaUpcoming, directory);
+      fhcChartProjection = getCachedProjectionResult(fhcChartBoaUpcoming);
+      if (fhcChartProjection) {
+        console.log(`[loadFhcChart] Projection ready: ${fhcChartProjection.fhcProjection.projectedScore}`);
+        renderFhcChart();
+      }
+    } catch (e) {
+      console.warn("[loadFhcChart] Projection generation failed:", e);
+    }
+  }
+}
+
+function renderFhcChart() {
+  const ctx = document.getElementById("fhcChart")?.getContext("2d");
+  if (!ctx || !fhcChartHistorical) return;
+
+  const labels = [...fhcChartHistorical.labels];
+  const totals = [...fhcChartHistorical.totals];
+  let projectedIndex = -1;
+
+  if (fhcChartProjection && fhcChartProjection.fhcProjection && fhcChartBoaUpcoming) {
+    labels.push(`${fhcChartBoaUpcoming.year} Proj.`);
+    totals.push(fhcChartProjection.fhcProjection.projectedScore);
+    projectedIndex = labels.length - 1;
   }
 
   if (labels.length === 0) {
-    labels = ["No BOA STL data yet"];
-    totals = [0];
+    labels.push("No BOA STL data yet");
+    totals.push(0);
   }
 
   if (fhcChartInstance) fhcChartInstance.destroy();
+
+  const historicalBorder = "#38bdf8";
+  const projectedBorder = "#a78bfa";
 
   fhcChartInstance = new Chart(ctx, {
     type: "line",
     data: {
       labels,
-      datasets: [
-        {
-          label: "Total BOA Score",
-          data: totals,
-          borderColor: "#38bdf8",
-          backgroundColor: "rgba(56, 189, 248, 0.1)",
-          borderWidth: 3,
-          tension: 0.3,
-          fill: true
-        }
-      ]
+      datasets: [{
+        label: "BOA STL Prelims Score",
+        data: totals,
+        borderColor: historicalBorder,
+        backgroundColor: "rgba(56, 189, 248, 0.1)",
+        borderWidth: 3,
+        tension: 0.3,
+        fill: true,
+        segment: {
+          borderColor: (s) => (projectedIndex >= 0 && s.p1DataIndex === projectedIndex ? projectedBorder : historicalBorder),
+          borderDash: (s) => (projectedIndex >= 0 && s.p1DataIndex === projectedIndex ? [7, 5] : undefined)
+        },
+        pointBackgroundColor: (p) => (projectedIndex >= 0 && p.dataIndex === projectedIndex ? projectedBorder : historicalBorder),
+        pointBorderColor: (p) => (projectedIndex >= 0 && p.dataIndex === projectedIndex ? projectedBorder : historicalBorder),
+        pointRadius: (p) => (projectedIndex >= 0 && p.dataIndex === projectedIndex ? 7 : 3),
+        pointHoverRadius: (p) => (projectedIndex >= 0 && p.dataIndex === projectedIndex ? 9 : 5)
+      }]
     },
     options: {
       responsive: true,
@@ -363,6 +421,14 @@ async function loadFhcChart() {
       plugins: {
         legend: {
           labels: { color: "#94a3b8", font: { family: "Plus Jakarta Sans", size: 11 } }
+        },
+        tooltip: {
+          callbacks: {
+            label: (item) => {
+              const isProj = projectedIndex >= 0 && item.dataIndex === projectedIndex;
+              return ` ${isProj ? "Projected: " : "Score: "}${item.parsed.y.toFixed(3)}`;
+            }
+          }
         }
       },
       scales: {
