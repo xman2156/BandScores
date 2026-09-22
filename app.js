@@ -104,7 +104,7 @@ async function loadSpotlightTiles() {
     container.innerHTML = `
       <div class="stat-card flex-1 min-w-[140px]">
         <div class="stat-label">Spotlight</div>
-        <div class="stat-value text-slate-500 italic text-sm">No contests</div>
+        <div class="stat-value text-slate-500 italic text-sm">No competitions</div>
         <div class="stat-sub">FHC has no recorded appearances</div>
       </div>
     `;
@@ -194,57 +194,88 @@ async function fillUpcomingTile(tile, comp, allEntries) {
 }
 
 // ---------------------------------------------------------------------------
-// Recent Scores Tile
+// Recent Competitions Tile
 // ---------------------------------------------------------------------------
-async function loadRecentScores() {
-  const tbody = document.getElementById("scoresTableBody");
-  const titleEl = document.getElementById("recentScoresTitle");
+async function loadRecentCompetitions() {
+  const tbody = document.getElementById("recentCompsTableBody");
   if (!tbody) return;
 
+  tbody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-slate-500 text-xs italic animate-pulse">Loading recent competitions…</td></tr>`;
+
+  let directory;
   try {
-    const directory = await fetchMasterDirectory();
-    const now = new Date();
-
-    const completed = directory
-      .map(e => ({ ...e, dateObj: parseLocalDate(e.date, e.year) }))
-      .filter(e => e.dateObj < now)
-      .sort((a, b) => b.dateObj - a.dateObj);
-
-    if (completed.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="3" class="py-4 text-center text-slate-500 text-xs italic">No completed contests yet.</td></tr>`;
-      if (titleEl) titleEl.textContent = "Recent Scores";
-      return;
-    }
-
-    const recent = completed[0];
-    const rows = await fetchSheetGrid(recent.id, recent.prelimsTab);
-    const parsed = parseFullWorkbookCSV(rows);
-    const top = [...parsed.prelims].sort((a, b) => b.base - a.base).slice(0, 7);
-
-    if (titleEl) titleEl.textContent = `Recent Scores (${formatShortDate(recent.date)})`;
-
-    tbody.innerHTML = "";
-    top.forEach(band => {
-      const isFHC = band.name.toLowerCase().includes("howell central");
-      const tr = document.createElement("tr");
-      tr.className = isFHC ? "bg-blue-950/30" : "";
-      tr.innerHTML = `
-        <td class="py-2 ${isFHC ? 'text-blue-300 font-bold' : 'text-white'}">
-          ${band.name} ${isFHC ? '<span class="text-[10px] bg-blue-500/20 text-blue-300 px-1 rounded ml-1">FHC</span>' : ''}
-        </td>
-        <td class="py-2 text-right text-slate-400">${recent.name}</td>
-        <td class="py-2 text-right font-mono text-emerald-400 font-bold">${band.base.toFixed(3)}</td>
-      `;
-      tbody.appendChild(tr);
-    });
+    directory = await fetchMasterDirectory();
   } catch (err) {
-    console.error("[loadRecentScores]", err);
-    tbody.innerHTML = `<tr><td colspan="3" class="py-4 text-center text-red-400 text-xs font-mono">Could not load recent scores.</td></tr>`;
+    console.error("[loadRecentCompetitions]", err);
+    tbody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-red-400 text-xs font-mono">Could not load recent competitions.</td></tr>`;
+    return;
   }
+
+  const now = new Date();
+  const completed = directory
+    .map(e => ({ ...e, dateObj: parseLocalDate(e.date, e.year) }))
+    .filter(e => e.dateObj < now)
+    .sort((a, b) => b.dateObj - a.dateObj)
+    .slice(0, 4);
+
+  if (completed.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-slate-500 text-xs italic">No completed competitions yet.</td></tr>`;
+    return;
+  }
+
+  const results = await Promise.all(completed.map(async (comp) => {
+    try {
+      const rows = await fetchSheetGrid(comp.id, comp.prelimsTab);
+      const parsed = parseFullWorkbookCSV(rows);
+      const roster = parsed.prelims;
+      if (roster.length === 0) return { comp, winner: null, fhc: null };
+
+      const sorted = [...roster].sort((a, b) => b.base - a.base);
+      const winner = sorted[0];
+      const fhcIdx = sorted.findIndex(b => bandNameMatches(b.name, "Francis Howell Central"));
+      const fhc = fhcIdx >= 0 && sorted[fhcIdx].base > 0
+        ? { rank: fhcIdx + 1, score: sorted[fhcIdx].base, totalBands: roster.length }
+        : null;
+
+      return { comp, winner, fhc };
+    } catch (err) {
+      console.warn(`[loadRecentCompetitions] Skipping ${comp.name}:`, err);
+      return { comp, winner: null, fhc: null };
+    }
+  }));
+
+  tbody.innerHTML = "";
+  results.forEach(({ comp, winner, fhc }) => {
+    const tr = document.createElement("tr");
+    const dateStr = formatShortDate(comp.dateObj);
+
+    const winnerCell = (winner && winner.base > 0)
+      ? `<div class="text-white text-xs font-medium leading-tight">${winner.name}</div>
+         <div class="font-mono text-emerald-400 text-[11px] leading-tight">${winner.base.toFixed(3)}</div>`
+      : `<span class="text-slate-500 italic text-[11px]">No results</span>`;
+
+    const fhcCell = fhc
+      ? `<div class="text-right">
+           <div class="text-blue-300 font-bold text-xs leading-tight">#${fhc.rank} of ${fhc.totalBands}</div>
+           <div class="font-mono text-blue-400 text-[11px] leading-tight">${fhc.score.toFixed(3)}</div>
+         </div>`
+      : `<div class="text-right text-slate-600 italic text-[11px]">Did not attend</div>`;
+
+    tr.innerHTML = `
+      <td class="py-2.5 pr-3">
+        <div class="text-white font-bold text-xs leading-tight">${comp.name}</div>
+        <div class="text-slate-500 text-[10px] font-mono leading-tight">${comp.loc}</div>
+      </td>
+      <td class="py-2.5 px-3 text-slate-400 text-[11px] font-mono whitespace-nowrap">${dateStr}</td>
+      <td class="py-2.5 px-3">${winnerCell}</td>
+      <td class="py-2.5 pl-3">${fhcCell}</td>
+    `;
+    tbody.appendChild(tr);
+  });
 }
 
 // ---------------------------------------------------------------------------
-// Upcoming Contests Tile
+// Upcoming Competitions Tile
 // ---------------------------------------------------------------------------
 async function loadUpcomingContests() {
   const container = document.getElementById("upcomingList");
@@ -262,7 +293,7 @@ async function loadUpcomingContests() {
 
     container.innerHTML = "";
     if (upcoming.length === 0) {
-      container.innerHTML = `<div class="text-xs text-slate-500 italic text-center py-4">No upcoming contests on the calendar.</div>`;
+      container.innerHTML = `<div class="text-xs text-slate-500 italic text-center py-4">No upcoming competitions on the calendar.</div>`;
       return;
     }
 
@@ -283,7 +314,7 @@ async function loadUpcomingContests() {
     });
   } catch (err) {
     console.error("[loadUpcomingContests]", err);
-    container.innerHTML = `<div class="text-xs text-red-400 font-mono text-center py-4">Could not load upcoming contests.</div>`;
+    container.innerHTML = `<div class="text-xs text-red-400 font-mono text-center py-4">Could not load upcoming competitions.</div>`;
   }
 }
 
@@ -379,10 +410,9 @@ async function loadFhcChart() {
 
   fhcChartData.season = { labels: seasonLabels, scores: seasonScores, projectedFrom: seasonProjectedFrom };
 
-  // ---------- Initial render ----------
   renderFhcChart();
 
-  // ---------- Background: generate BOA projection if missing ----------
+  // Background: generate BOA projection if missing
   if (boaNext && boaProjectedFrom === -1) {
     console.log(`[loadFhcChart] Generating ${boaNext.year} BOA STL projection in background...`);
     try {
@@ -393,7 +423,6 @@ async function loadFhcChart() {
         fhcChartData.boa.scores.push(proj.fhcProjection.projectedScore);
         fhcChartData.boa.projectedFrom = fhcChartData.boa.labels.length - 1;
 
-        // Also fold BOA into the season dataset if it isn't there yet
         const alreadyInSeason = fhcChartData.season.labels.some(l => l.startsWith("BOA STL"));
         if (!alreadyInSeason) {
           const newIdx = fhcChartData.season.labels.length;
@@ -420,7 +449,7 @@ function setChartMode(mode) {
   if (descEl) {
     descEl.textContent = mode === "boa"
       ? "Solid line: verified historical BOA STL Prelims scores. Dashed violet: projected current-season result."
-      : "Solid line: completed 2026 contest scores. Dashed violet: AI-projected scores for upcoming contests. Competitions FHC did not attend are omitted.";
+      : "Solid line: completed 2026 competition scores. Dashed violet: AI-projected scores for upcoming competitions. Competitions FHC did not attend are omitted.";
   }
 
   renderFhcChart();
@@ -530,7 +559,7 @@ function wireSyncButton() {
     lucide.createIcons();
 
     await Promise.all([
-      loadRecentScores(),
+      loadRecentCompetitions(),
       loadUpcomingContests(),
       loadSpotlightTiles(),
       loadFhcChart()
@@ -554,14 +583,11 @@ document.addEventListener("DOMContentLoaded", () => {
   lucide.createIcons();
   wireSyncButton();
 
-  loadRecentScores();
+  loadRecentCompetitions();
   loadUpcomingContests();
 
-  // Render chart immediately with cached data
   loadFhcChart();
 
-  // After spotlight runs (which generates projections for the nearest upcoming
-  // contests), re-render the chart so newly cached projections appear.
   loadSpotlightTiles().then(() => {
     console.log("[bootstrap] Spotlight complete, refreshing chart...");
     loadFhcChart();

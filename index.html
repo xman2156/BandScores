@@ -56,12 +56,12 @@
 
     <main class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
 
-      <section class="dashboard-tile">
+      <section class="dashboard-tile xl:col-span-2">
         <div>
           <div class="flex items-center justify-between mb-3">
             <h3 class="tile-title">
               <i data-lucide="award" class="w-4 h-4 text-emerald-400"></i>
-              <span id="recentScoresTitle">Recent Scores</span>
+              Recent Competitions
             </h3>
             <span class="badge-emerald">Live Ingest</span>
           </div>
@@ -69,17 +69,18 @@
             <table class="w-full text-xs text-left">
               <thead class="text-slate-400 uppercase font-semibold border-b border-slate-800">
                 <tr>
-                  <th class="py-2">Program</th>
-                  <th class="py-2 text-right">Contest</th>
-                  <th class="py-2 text-right font-mono">Score</th>
+                  <th class="py-2 pr-3">Competition</th>
+                  <th class="py-2 px-3">Date</th>
+                  <th class="py-2 px-3">Winner</th>
+                  <th class="py-2 pl-3 text-right">FHC Result</th>
                 </tr>
               </thead>
-              <tbody id="scoresTableBody" class="divide-y divide-slate-800/60 font-medium text-slate-300">
+              <tbody id="recentCompsTableBody" class="divide-y divide-slate-800/60 font-medium text-slate-300">
               </tbody>
             </table>
           </div>
         </div>
-        <p class="tile-footer">Top results from the most recent completed contest.</p>
+        <p class="tile-footer">Latest completed competitions with class winner and FHC's placement where applicable.</p>
       </section>
 
       <section class="dashboard-tile">
@@ -87,7 +88,7 @@
           <div class="flex items-center justify-between mb-3">
             <h3 class="tile-title">
               <i data-lucide="calendar" class="w-4 h-4 text-indigo-400"></i>
-              Upcoming Contests
+              Upcoming Competitions
             </h3>
             <a href="competitions.html" class="badge-indigo hover:bg-indigo-500/20 transition flex items-center gap-1">
               <span>View All Comps</span>
@@ -99,34 +100,6 @@
           </div>
         </div>
         <p class="tile-footer">Click any event for live boards, or "View All Comps" for full multi-year archives.</p>
-      </section>
-
-      <section class="dashboard-tile">
-        <div>
-          <div class="flex items-center justify-between mb-3">
-            <h3 class="tile-title">
-              <i data-lucide="database" class="w-4 h-4 text-amber-400"></i>
-              Data Pipe Status
-            </h3>
-            <span class="flex items-center gap-1.5 text-xs text-emerald-400 font-mono">
-              <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              Synchronized
-            </span>
-          </div>
-          <div class="space-y-3 text-xs text-slate-400">
-            <p>
-              Reads directly from your published Google Drive spreadsheet endpoint without backend servers.
-            </p>
-            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1.5 font-mono text-[11px]">
-              <div><span class="text-slate-500">Target Node:</span> Master Directory</div>
-              <div><span class="text-slate-500">Ingest Mode:</span> Direct Client CSV Parser</div>
-              <div><span class="text-slate-500">Payload Status:</span> Validated & Parsed</div>
-            </div>
-          </div>
-        </div>
-        <div class="mt-4 pt-3 border-t border-slate-800 text-[11px] text-slate-500">
-          Tailored for high-density analytics on desktop, tablet, and mobile.
-        </div>
       </section>
 
       <section class="dashboard-tile md:col-span-2 xl:col-span-3">
