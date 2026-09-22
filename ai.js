@@ -53,10 +53,6 @@ function bandNameMatches(a, b) {
   return sa.length > 0 && sa === sb;
 }
 
-// ---------------------------------------------------------------------------
-// Low-level Gemini call. `asText: true` disables JSON mode entirely so the
-// model can reason freely. Used by the field projection.
-// ---------------------------------------------------------------------------
 async function callGemini(prompt, { schema = null, temperature = 0.3, maxTokens = 24000, cacheKey = null, asText = false } = {}) {
   if (!GEMINI_PROXY_URL || GEMINI_PROXY_URL.includes("YOUR-SUBDOMAIN")) {
     throw new Error("AI proxy URL not configured — edit config.js");
@@ -149,9 +145,6 @@ async function callGemini(prompt, { schema = null, temperature = 0.3, maxTokens 
   throw new Error(`All models unavailable. Last: ${lastError?.message || "unknown"}`);
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 function classMedian(roster, classification) {
   const peers = roster.filter(b => b.classification === classification && b.base > 0);
   if (peers.length === 0) return null;
@@ -176,9 +169,6 @@ function captionLines(band) {
   return lines.length ? lines.join("\n") : null;
 }
 
-// ---------------------------------------------------------------------------
-// Prompt 1: Past Contest Summary (unchanged, still uses schema)
-// ---------------------------------------------------------------------------
 const SUMMARY_SCHEMA = {
   type: "object",
   properties: {
@@ -231,9 +221,6 @@ Return valid JSON adhering to this schema:
 ${JSON.stringify(SUMMARY_SCHEMA)}`;
 }
 
-// ---------------------------------------------------------------------------
-// Prompt 2: Upcoming Contest Outlook (unchanged, still uses schema)
-// ---------------------------------------------------------------------------
 const OUTLOOK_SCHEMA = {
   type: "object",
   properties: {
@@ -293,21 +280,27 @@ ${JSON.stringify(OUTLOOK_SCHEMA)}`;
 }
 
 // ---------------------------------------------------------------------------
-// Prompt 3: Field-Wide Projections — PROSE OUTPUT
+// Field projection prompt — dates, sheet context, timing principles
 // ---------------------------------------------------------------------------
 function buildFieldProjectionPrompt(comp, roster, history, fieldContext) {
   const isSuperRegional = comp.name.toLowerCase().includes("super regional") || comp.name.toLowerCase().includes("boa");
   const defaultFinalsSize = isSuperRegional ? 14 : (roster.length >= 16 ? 12 : 10);
   const fieldSize = roster.length;
+  const midpoint = Math.ceil(fieldSize / 2);
+  const secondHalfStart = midpoint + 1;
+  const useTwoParts = fieldSize > 30;
 
-  // ---- Per-band history with caption breakdown where available ----
+  // Format the target contest date as a readable string
+  const targetDateStr = comp.date || "(date not specified)";
+
+  // Per-band history with dates and captions
   const bandBlocks = roster.map(b => {
     const scores = history[b.name] || [];
     if (scores.length === 0) {
       return `${b.name} (${b.classification || "Unclassified"}):\n  - No historical scores on record.`;
     }
     const lines = scores.map(s => {
-      let line = `  - ${s.year} ${s.contest}: ${s.score.toFixed(3)}`;
+      let line = `  - ${s.date || s.year} ${s.contest}: ${s.score.toFixed(3)}`;
       if (s.captions && Object.keys(s.captions).length > 0) {
         const c = s.captions;
         const parts = [];
@@ -325,7 +318,6 @@ function buildFieldProjectionPrompt(comp, roster, history, fieldContext) {
 
   const rosterList = roster.map((b, i) => `${i + 1}. ${b.name}${b.classification ? ` [${b.classification}]` : ""}`).join("\n");
 
-  // ---- Historical score-to-rank distributions ----
   const fmt = (v) => v == null ? "—" : v.toFixed(2);
   const fieldContextText = fieldContext.length > 0
     ? fieldContext.map(fc => {
@@ -342,79 +334,94 @@ function buildFieldProjectionPrompt(comp, roster, history, fieldContext) {
       }).join("\n")
     : "  (No historical field distributions available)";
 
-  return `You are an elite competitive marching band data analyst. Model the projected preliminary-round standings and finals-qualification benchmarks for an upcoming contest.
+  const leaderboardFormat = useTwoParts
+    ? `LEADERBOARD_PART_1:
+1. <Band Name> | <Score> | <one-sentence note>
+2. <Band Name> | <Score> | <one-sentence note>
+...through rank ${midpoint}
 
-Think carefully before writing your final answer. Consider each band's trajectory, how they've performed against these specific opponents, and how scoring scales differ between venues.
+LEADERBOARD_PART_2:
+${secondHalfStart}. <Band Name> | <Score> | <one-sentence note>
+${secondHalfStart + 1}. <Band Name> | <Score> | <one-sentence note>
+...through rank ${fieldSize}`
+    : `LEADERBOARD:
+1. <Band Name> | <Score> | <one-sentence note>
+2. <Band Name> | <Score> | <one-sentence note>
+...through rank ${fieldSize}`;
+
+  return `You are an elite competitive marching band data analyst. Model the projected preliminary-round standings for an upcoming contest.
+
+Think carefully. Consider each band's trajectory, head-to-head results against the specific opponents registered here, how scoring scales differ between contests, and where each historical score falls in the calendar.
 
 === CONTEST PARAMETERS ===
 - Event: ${comp.name} (${comp.year})
 - Location: ${comp.loc}
-- Date: ${comp.date}
+- Contest Date: ${targetDateStr}
 - Field size: ${fieldSize} registered programs
 - Multi-Round: ${comp.hasFinals ? `YES — top ${defaultFinalsSize} advance to finals` : "NO — single round"}
 
 === HISTORICAL FIELD DISTRIBUTIONS ===
-These are actual score-to-rank maps from past contests. They tell you what a given score MEANS at each contest. If your projection puts a band at rank N with a score far outside the range seen historically for that rank band at this contest type, reconsider.
+Actual score-to-rank maps from past contests. Use these as evidence of what a given score MEANS at each contest's sheet — they tell you the numeric range that typically corresponds to each rank band. If your projection puts a band at rank N with a score far outside the historical range for rank N, reconsider.
 
 ${fieldContextText}
 
-=== SCORING SCALE CONTEXT ===
-Different contests use different scales even for the same underlying performance:
-- Local invitationals (MEMC, Lafayette CoC, Tiger Ambush, River City Showcase, Deer Creek) tend to score 2-6 points higher than the same band's BOA-sheet equivalent. A band scoring 71 at a local show is not necessarily a 71 at a BOA regional.
-- BOA Super Regionals (BOA St. Louis) use the strict national 8-judge sheet. Top-5 national bands score 88-92; the finals cutoff typically sits 80-83.
-- Renegade Review, Broken Arrow Invitational, and Deer Creek Invitational all use BOA-style sheets. Adjust for panel tendencies when cross-referencing against local results.
-- When comparing a band's local score to their expected BOA score, look at their own history first: how did they score at BOA events vs local events in past seasons? Use that differential.
+=== SCORING SCALE AND TIMING CONSIDERATIONS ===
+
+Scoring scales vary by contest. Local invitationals and BOA-style contests evaluate bands on different sheets. Two scores that look identical numerically may not represent the same level of performance if they came from different sheet types.
+
+Timing within a season also matters. Bands typically improve over the course of a season as programs clean and expand. A score from mid-September and a score from late October are not directly comparable even on the same sheet.
+
+When projecting each band:
+- Use their own history on the target contest's sheet type as the primary anchor.
+- Use their current-season scores (from whatever sheet they were on) to gauge whether they're ahead of, on, or behind their usual pace at this point in the calendar.
+- When comparing two bands in the field, note the dates of their most recent scores. A score from a date close to the target contest carries more predictive weight than a score from weeks earlier. A score on a similar sheet type carries more weight than one on a different sheet.
+- When two bands in this field competed on the same day at comparable-level events, that head-to-head comparison is unusually direct and should be weighted heavily.
+- Trajectory matters: a band whose recent results show meaningful improvement over their own past performance should be projected near their new level, not held at their old one.
 
 === REGISTERED FIELD (${fieldSize} PROGRAMS) ===
 ${rosterList}
 
 === HISTORICAL RECORDS BY PROGRAM ===
-Each band's chronological history with available caption breakdowns.
+Chronological history with dates and available caption breakdowns.
 
 ${bandBlocks}
 
 === ANALYTICAL TASK ===
 
-1. For each band: reason through their own trajectory, their head-to-head results against the other bands in this field, and how their local-circuit scores translate to the target contest's scoring scale.
+1. For each band, reason through their own trajectory, head-to-head results against the specific bands registered here, how their scores translate across sheet types, and where their scores fall in the calendar.
 
-2. Adjust cross-venue scores when necessary. A band scoring 71.8 at Tiger Ambush should be projected based on how they historically perform on the target contest's sheet, not by adding a fixed number.
+2. Rank the full field from 1 to ${fieldSize}. Scores must strictly decrease as rank increases.
 
-3. Rank the full field from 1 to ${fieldSize}. Scores must strictly decrease as rank increases.
+${comp.hasFinals ? `3. Identify the finals cutoff — the projected score of the band at rank #${defaultFinalsSize}.` : ""}
 
-${comp.hasFinals
-  ? `4. Identify the finals cutoff — the projected score of the band at rank #${defaultFinalsSize}.`
-  : `4. This contest has no finals round.`}
-
-5. Bands with no prior history: use the field distribution above to place them reasonably. Don't guess high.
+4. Bands with no prior history: use the field distribution above to place them reasonably. Don't guess high.
 
 === OUTPUT FORMAT ===
 
-Write a short analytical overview first (3-5 sentences), then output the leaderboard.
+Write a short analytical overview first, then output the leaderboard. Every band needs a one-sentence note explaining which scores and dates drove the projection.
 
-Your response must use EXACTLY this format so it can be parsed:
+Your response must use EXACTLY this format:
 
-ANALYSIS: <your 3-5 sentence overview>
+ANALYSIS: <3-5 sentence overview>
 
-LEADERBOARD:
-1. <Band Name> | <Score>
-2. <Band Name> | <Score>
-3. <Band Name> | <Score>
-...continue through rank ${fieldSize}
+${leaderboardFormat}
 
 FINALS_SIZE: <number>
 FINALS_CUTOFF: <number>
 
-Rules for the leaderboard:
+Rules:
 - Band names must match the registered roster exactly.
-- Scores must be numeric with at most two decimals (e.g. 84.20).
-- Rank numbers must be sequential integers from 1 to ${fieldSize}.
-- Every registered band must appear exactly once.
+- Scores numeric with at most two decimals.
+- Rank numbers sequential integers, no gaps.
+- Every registered band appears exactly once.
+- Notes must cite specific scores (with dates) that informed the projection.
+- If you notice your later scores drifting away from what the historical distributions suggest for those ranks, STOP and re-anchor before continuing.
 
-Begin your response with "ANALYSIS:" and nothing else before it.`;
+Begin with "ANALYSIS:" and nothing else before it.`;
 }
 
 // ---------------------------------------------------------------------------
-// Parse the prose response back into structured data
+// Parser — extracts leaderboard rows and notes
 // ---------------------------------------------------------------------------
 function parseFieldProjectionText(text) {
   const result = {
@@ -424,29 +431,37 @@ function parseFieldProjectionText(text) {
     projections: []
   };
 
-  // Overview
-  const overviewMatch = text.match(/ANALYSIS:\s*([\s\S]*?)(?=LEADERBOARD:|$)/i);
+  const overviewMatch = text.match(/ANALYSIS:\s*([\s\S]*?)(?=LEADERBOARD|FINALS_SIZE:|$)/i);
   if (overviewMatch) result.overview = overviewMatch[1].trim();
 
-  // Leaderboard rows
-  const leaderboardMatch = text.match(/LEADERBOARD:\s*([\s\S]*?)(?=FINALS_SIZE:|FINALS_CUTOFF:|$)/i);
-  if (leaderboardMatch) {
-    const lines = leaderboardMatch[1].split("\n");
+  // Row format: "1. Band Name | 76.30 | note text here"
+  const extractRows = (section) => {
+    const rows = [];
+    const lines = section.split("\n");
     for (const line of lines) {
-      const m = line.match(/^\s*(\d+)\.\s*(.+?)\s*\|\s*([\d.]+)\s*$/);
+      const m = line.match(/^\s*(\d+)\.\s*(.+?)\s*\|\s*([\d.]+)\s*(?:\|\s*(.*))?$/);
       if (m) {
         const rank = parseInt(m[1], 10);
         const name = m[2].trim();
         const score = parseFloat(m[3]);
+        const note = (m[4] || "").trim();
         if (!isNaN(rank) && !isNaN(score)) {
-          result.projections.push({
-            name,
-            projectedRank: rank,
-            projectedScore: score
-          });
+          rows.push({ name, projectedRank: rank, projectedScore: score, note });
         }
       }
     }
+    return rows;
+  };
+
+  const part1Match = text.match(/LEADERBOARD_PART_1:\s*([\s\S]*?)(?=LEADERBOARD_PART_2:|FINALS_SIZE:|$)/i);
+  const part2Match = text.match(/LEADERBOARD_PART_2:\s*([\s\S]*?)(?=FINALS_SIZE:|FINALS_CUTOFF:|$)/i);
+  const singleMatch = text.match(/LEADERBOARD:\s*([\s\S]*?)(?=FINALS_SIZE:|FINALS_CUTOFF:|$)/i);
+
+  if (part1Match || part2Match) {
+    if (part1Match) result.projections.push(...extractRows(part1Match[1]));
+    if (part2Match) result.projections.push(...extractRows(part2Match[1]));
+  } else if (singleMatch) {
+    result.projections.push(...extractRows(singleMatch[1]));
   }
 
   const finalsSizeMatch = text.match(/FINALS_SIZE:\s*(\d+)/i);
@@ -459,7 +474,8 @@ function parseFieldProjectionText(text) {
     throw new Error("Failed to parse leaderboard from AI response. First 300 chars: " + text.slice(0, 300));
   }
 
-  // Add derived fields per band
+  result.projections.sort((a, b) => a.projectedRank - b.projectedRank);
+
   result.projections.forEach(p => {
     if (result.finalsSize > 0) {
       if (p.projectedRank <= result.finalsSize - 2) {
@@ -479,15 +495,11 @@ function parseFieldProjectionText(text) {
       p.confidence = "medium";
       p.finalsChance = 0;
     }
-    p.note = "";
   });
 
   return result;
 }
 
-// ---------------------------------------------------------------------------
-// High-level generators
-// ---------------------------------------------------------------------------
 async function generatePerformanceSummary(comp, fhc, roster, currentRound, priorSeasonScores) {
   const prompt = buildSummaryPrompt(comp, fhc, roster, currentRound, priorSeasonScores);
   return await callGemini(prompt, { schema: SUMMARY_SCHEMA, temperature: 0.3, maxTokens: 8000 });
@@ -512,6 +524,21 @@ async function generateFieldProjections(comp, roster, history, fieldContext, cac
   console.log(text.slice(0, 500));
 
   const parsed = parseFieldProjectionText(text);
-  console.log(`[ai] Parsed ${parsed.projections.length} projections from prose response`);
+  console.log(`[ai] Parsed ${parsed.projections.length} projections`);
+
+  // Audit: dump every band's projected score with the note the model wrote
+  console.log("[ai] Per-band projections + notes:");
+  parsed.projections.forEach(p => {
+    console.log(`  #${p.projectedRank.toString().padStart(2)} ${p.name.padEnd(30)} ${p.projectedScore.toFixed(2)}  — ${p.note || "(no note)"}`);
+  });
+
+  const ranks = parsed.projections.map(p => p.projectedRank);
+  if (new Set(ranks).size !== ranks.length) {
+    console.warn(`[ai] Duplicate ranks detected`);
+  }
+  if (parsed.projections.length !== roster.length) {
+    console.warn(`[ai] Expected ${roster.length} bands, got ${parsed.projections.length}`);
+  }
+
   return parsed;
 }
