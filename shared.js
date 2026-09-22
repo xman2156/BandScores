@@ -62,8 +62,6 @@ function parseLocalDate(dateStr, fallbackYear) {
 
 async function fetchMasterDirectory() {
   const endpoint = `https://docs.google.com/spreadsheets/d/${MASTER_INDEX_SPREADSHEET_ID}/gviz/tq?tqx=out:csv&_cb=${Date.now()}`;
-  // cache: "no-store" defeats browser HTTP caching for this request. The _cb
-  // query param handles Google's CDN; this handles the browser.
   const res = await fetch(endpoint, { cache: "no-store" });
   if (!res.ok) throw new Error(`Master directory HTTP ${res.status}`);
   const csv = await res.text();
@@ -339,7 +337,9 @@ function parseFullWorkbookCSV(rows) {
 }
 
 // =============================================================================
-// Field history gatherer (for projections)
+// Field history gatherer — returns per-band history AND per-contest field
+// distributions. The distributions are what let the AI know that a 75 at BOA
+// STL is mid-pack, not top-15.
 // =============================================================================
 async function gatherFieldHistory(comp, allEntries, roster) {
   const now = new Date();
@@ -368,10 +368,15 @@ async function gatherFieldHistory(comp, allEntries, roster) {
     results.push(...batchResults);
   }
 
+  // Per-band history (existing behavior)
   const history = {};
   roster.forEach(b => history[b.name] = []);
 
+  // Field distribution context — one entry per past contest
+  const fieldContext = [];
+
   for (const r of results) {
+    // --- Per-band history ---
     for (const band of r.roster) {
       const match = roster.find(rb => bandNameMatches(rb.name, band.name));
       if (match && band.base > 0) {
@@ -383,16 +388,44 @@ async function gatherFieldHistory(comp, allEntries, roster) {
         });
       }
     }
+
+    // --- Field distribution for this contest ---
+    const scored = r.roster.filter(b => b.base > 0).sort((a, b) => b.base - a.base);
+    if (scored.length >= 5) {
+      const scoreAt = (rank) => scored[rank - 1]?.base ?? null;
+      const mid = Math.floor(scored.length / 2);
+      const median = scored.length % 2
+        ? scored[mid].base
+        : (scored[mid - 1].base + scored[mid].base) / 2;
+
+      fieldContext.push({
+        contest: r.entry.name,
+        contestKey: r.entry.key,
+        year: r.entry.year,
+        totalBands: scored.length,
+        topScore: scored[0].base,
+        topBand: scored[0].name,
+        rank5Score:  scoreAt(5),
+        rank10Score: scoreAt(10),
+        rank15Score: scoreAt(15),
+        rank20Score: scoreAt(20),
+        rank30Score: scoreAt(30),
+        medianScore: median
+      });
+    }
   }
 
   Object.values(history).forEach(arr =>
     arr.sort((a, b) => parseLocalDate(a.date, a.year) - parseLocalDate(b.date, b.year))
   );
 
-  const totalRows = Object.values(history).reduce((sum, arr) => sum + arr.length, 0);
-  console.log(`[gatherFieldHistory] ${sources.length} sheets → ${totalRows} band-score rows across ${roster.length} bands`);
+  // Most recent first
+  fieldContext.sort((a, b) => parseInt(b.year, 10) - parseInt(a.year, 10));
 
-  return history;
+  const totalRows = Object.values(history).reduce((sum, arr) => sum + arr.length, 0);
+  console.log(`[gatherFieldHistory] ${sources.length} sheets → ${totalRows} band-score rows across ${roster.length} bands, ${fieldContext.length} field distributions`);
+
+  return { history, fieldContext };
 }
 
 // =============================================================================
@@ -438,8 +471,6 @@ function getCachedProjectionResult(comp) {
       localStorage.removeItem(`proj_result_${comp.key}_${comp.year}`);
       return null;
     }
-    // If the directory's hasFinals flag no longer matches what the cached
-    // projection was generated with, treat the cache as stale.
     if (typeof parsed.hasFinals === "boolean" && typeof comp.hasFinals === "boolean" && parsed.hasFinals !== comp.hasFinals) {
       console.log(`[proj-cache] hasFinals changed for ${comp.key} ${comp.year}, discarding stale projection`);
       localStorage.removeItem(`proj_result_${comp.key}_${comp.year}`);
@@ -457,15 +488,17 @@ async function generateAndCacheProjection(comp, allEntries, onProgress) {
   if (roster.length === 0) return null;
 
   if (onProgress) onProgress(`Gathering history (${roster.length} bands)...`);
-  const history = await gatherFieldHistory(comp, allEntries, roster);
+  const { history, fieldContext } = await gatherFieldHistory(comp, allEntries, roster);
+
   const bust = getContestBust(comp.key, comp.year);
   const weekNum = Math.floor(Date.now() / (7 * 24 * 3600 * 1000));
+  // v2 prefix — bump so the new prompt doesn't reuse old cached responses
   const kvCacheKey = bust !== "0"
-    ? `proj-${comp.key}-${comp.year}-w${weekNum}-b${bust}`
-    : `proj-${comp.key}-${comp.year}-w${weekNum}`;
+    ? `proj2-${comp.key}-${comp.year}-w${weekNum}-b${bust}`
+    : `proj2-${comp.key}-${comp.year}-w${weekNum}`;
 
   if (onProgress) onProgress("Running AI projection...");
-  const result = await generateFieldProjections(comp, roster, history, kvCacheKey);
+  const result = await generateFieldProjections(comp, roster, history, fieldContext, kvCacheKey);
   cacheProjectionResult(comp, result, roster, bust);
   return result;
 }

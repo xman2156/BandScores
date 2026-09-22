@@ -322,9 +322,10 @@ const FIELD_PROJECTION_SCHEMA = {
   required: ["overview", "finalsSize", "finalsCutoff", "projections"]
 };
 
-function buildFieldProjectionPrompt(comp, roster, history) {
+function buildFieldProjectionPrompt(comp, roster, history, fieldContext) {
   const isSuperRegional = comp.name.toLowerCase().includes("super regional") || comp.name.toLowerCase().includes("boa");
   const defaultFinalsSize = isSuperRegional ? 14 : (roster.length >= 16 ? 12 : 10);
+  const fieldSize = roster.length;
 
   const bandBlocks = roster.map(b => {
     const scores = history[b.name] || [];
@@ -339,15 +340,38 @@ function buildFieldProjectionPrompt(comp, roster, history) {
 
   const rosterList = roster.map((b, i) => `${i + 1}. ${b.name}${b.classification ? ` [${b.classification}]` : ""}`).join("\n");
 
+  // Field distribution section — actual past score-to-rank data
+  const fmt = (v) => v == null ? "—" : v.toFixed(2);
+  const fieldContextText = fieldContext.length > 0
+    ? fieldContext.map(fc => {
+        const parts = [
+          `top=${fmt(fc.topScore)} (${fc.topBand})`,
+          `#5=${fmt(fc.rank5Score)}`,
+          `#10=${fmt(fc.rank10Score)}`,
+          `#15=${fmt(fc.rank15Score)}`,
+          `#20=${fmt(fc.rank20Score)}`
+        ];
+        if (fc.rank30Score != null) parts.push(`#30=${fmt(fc.rank30Score)}`);
+        parts.push(`median=${fmt(fc.medianScore)}`);
+        return `  ${fc.year} ${fc.contest} (${fc.totalBands} bands): ${parts.join(", ")}`;
+      }).join("\n")
+    : "  (No historical field distributions available — fall back to general reasoning)";
+
   return `You are an elite competitive marching band data analyst modeling projected preliminary-round standings and finals qualification benchmarks for an upcoming event.
 
 === CONTEST PARAMETERS ===
 - Event: ${comp.name} (${comp.year})
 - Location: ${comp.loc}
 - Contest Date: ${comp.date}
+- Field size: ${fieldSize} registered programs
 - Multi-Round Event: ${comp.hasFinals ? `YES (Championship Finals round; top ${defaultFinalsSize} advance)` : "NO (Single-round class competition; prelims is final)"}
 
-=== REGISTERED FIELD (${roster.length} PROGRAMS) ===
+=== HISTORICAL FIELD DISTRIBUTIONS ===
+These are actual score-to-rank maps from past contests. Use them to understand what a given score MEANS in terms of placement. If your projection puts a band at rank N with a score far outside the historical range for rank N, you have made an error.
+
+${fieldContextText}
+
+=== REGISTERED FIELD (${fieldSize} PROGRAMS) ===
 ${rosterList}
 
 === HISTORICAL SCORING DATABASE BY PROGRAM ===
@@ -356,24 +380,24 @@ Each band's full chronological record is listed below, drawn from prior years of
 ${bandBlocks}
 
 === PROJECTION METHODOLOGY ===
-Think carefully about each program's trajectory before assigning numbers. This is a reasoning task, not a formula.
+Think carefully about each program's trajectory before assigning numbers.
 
 SCORING:
-- Derive every projection from the actual historical records above. Do not assume arbitrary score ceilings, floors, or field-relative adjustments.
-- A band's score should reflect where that band actually is. Field strength affects placement, not raw score. A program that has never broken 72 does not suddenly score 79 because they're standing next to a 92.
+- Each band's score should be anchored to their own history first.
+- BUT the resulting field must match the historical distributions above. If past editions of this contest placed #10 around 84, your #10 should also be around 84.
 - Weigh the most recent completed contests most heavily, then prior-year placements at this exact venue, then older data at peer venues.
-- Consider trajectory: a program on a multi-year upward curve should be projected to continue that curve; a program that has plateaued should be projected to plateau. Read the data rather than applying a rule.
-- Programs with no prior recorded history: estimate from the overall field, mark confidence "low".
+- Consider trajectory: a program on a multi-year upward curve continues; a program that has plateaued stays flat.
+- Programs with no prior recorded history: slot them against the historical distribution — unknowns land in the mid-to-lower portion of the range, not the top.
 
 RANK INTEGRITY:
-- projectedRank MUST be strictly unique integers from 1 through ${roster.length}.
-- projectedScore MUST strictly decrease as projectedRank increases (Rank 1 > Rank 2 > Rank 3 ...). If two programs feel nearly equal, still break the tie.
+- projectedRank MUST be strictly unique integers from 1 through ${fieldSize}.
+- projectedScore MUST strictly decrease as projectedRank increases.
 
 FINALS BUBBLE:
 ${comp.hasFinals
   ? `- Set finalsSize = ${defaultFinalsSize}.
 - finalsCutoff MUST equal the exact projectedScore of the program placed at rank #${defaultFinalsSize}.
-- finalsChance (0-100%): evaluate each program's probability of advancing based on their projected position relative to the cutoff and the volatility evident in their historical record. A lock at rank #3 with a stable record deserves 95%+; a program sitting right on the cut line deserves something near 50%; a program many points below the cut deserves under 10%.`
+- finalsChance (0-100%): evaluate each program's probability of advancing based on their projected position relative to the cutoff and the volatility in their historical record.`
   : `- This event has NO Finals round. Set finalsSize = 0, finalsCutoff = 0, and finalsChance = 0 for all bands.`}
 
 PER-BAND NOTE:
@@ -382,8 +406,18 @@ For each band, write a one-sentence note explaining what historical scores drove
 EXECUTIVE OVERVIEW:
 Write a 2-3 sentence overview covering:
 - The projected champion and what in their historical record justifies that placement.
-- The most compelling competitive storyline in the field (a riser, a faller, or a tight race).
+- The most compelling competitive storyline in the field.
 - Francis Howell Central's projected trajectory relative to their own historical baseline.
+
+=== FINAL VERIFICATION (MANDATORY) ===
+Before returning, walk through your projections and confirm the score at each of these ranks matches the historical distribution above:
+- Rank 1 score should be near the top scores shown in the past events
+- Rank 5 score should be near the #5 scores shown
+- Rank 10 score should be near the #10 scores shown
+- Rank 15 score should be near the #15 scores shown
+- Rank 20 score should be near the #20 scores shown
+
+If any of these are outside the historical range, adjust the SCORES (not the ranks) until they match. Never compress the field.
 
 Return valid JSON matching this schema:
 ${JSON.stringify(FIELD_PROJECTION_SCHEMA)}`;
@@ -402,7 +436,7 @@ async function generateContestOutlook(comp, fhcProjection, priorSeasonScores, ca
   return await callGemini(prompt, { schema: OUTLOOK_SCHEMA, temperature: 0.4, maxTokens: 6000, cacheKey });
 }
 
-async function generateFieldProjections(comp, roster, history, cacheKey = null) {
-  const prompt = buildFieldProjectionPrompt(comp, roster, history);
+async function generateFieldProjections(comp, roster, history, fieldContext, cacheKey = null) {
+  const prompt = buildFieldProjectionPrompt(comp, roster, history, fieldContext);
   return await callGemini(prompt, { schema: FIELD_PROJECTION_SCHEMA, temperature: 0.2, maxTokens: 24000, cacheKey });
 }
