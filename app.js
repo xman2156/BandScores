@@ -52,20 +52,26 @@ function parseSheetForDashboard(rows) {
   return out;
 }
 
+// Does the given roster contain FHC?
+function rosterHasFHC(roster) {
+  return roster.some(b => bandNameMatches(b.name, "Francis Howell Central"));
+}
+
 // ---------------------------------------------------------------------------
-// Spotlight Tiles (FHC) — reads from cached projections, generates on miss
+// Spotlight Tiles (FHC) — reads from cached projections, generates on miss.
+// Only includes contests where FHC is on the roster / results list.
 // ---------------------------------------------------------------------------
 async function loadSpotlightTiles() {
   const container = document.getElementById("spotlightTiles");
   if (!container) return;
 
-  container.innerHTML = Array(4).fill(`
-    <div class="stat-card flex-1 min-w-[140px] animate-pulse">
-      <div class="stat-label">Loading…</div>
-      <div class="stat-value text-slate-600">--</div>
-      <div class="stat-sub text-slate-600">Fetching contests</div>
+  container.innerHTML = `
+    <div class="stat-card flex-1 min-w-[140px]">
+      <div class="stat-label">Spotlight</div>
+      <div class="stat-value text-slate-500 font-mono animate-pulse text-base">Loading…</div>
+      <div class="stat-sub">Checking FHC schedule</div>
     </div>
-  `).join("");
+  `;
 
   let allEntries;
   try {
@@ -85,29 +91,83 @@ async function loadSpotlightTiles() {
   const now = new Date();
   const withDates = allEntries.map(e => ({ ...e, dateObj: parseLocalDate(e.date, e.year) }));
 
-  const upcoming = withDates
-    .filter(e => e.dateObj >= now)
-    .sort((a, b) => a.dateObj - b.dateObj)
-    .slice(0, 2);
-
-  const completed = withDates
+  // ---- 1. Most recent completed contests FHC actually attended ----
+  const completedSorted = withDates
     .filter(e => e.dateObj < now)
-    .sort((a, b) => b.dateObj - a.dateObj)
-    .slice(0, 2);
+    .sort((a, b) => b.dateObj - a.dateObj);
 
-  // Order: most recent completed first (left), then upcoming
-  const selected = [...completed, ...upcoming];
+  const recentCompleted = [];
+  for (const comp of completedSorted) {
+    if (recentCompleted.length >= 2) break;
+    try {
+      const rows = await fetchSheetGrid(comp.id, comp.prelimsTab);
+      const parsed = parseFullWorkbookCSV(rows);
+      const roster = parsed.prelims;
+      if (!rosterHasFHC(roster)) {
+        console.log(`[spotlight] ${comp.year} ${comp.name}: FHC not in results, skipping`);
+        continue;
+      }
+      const sorted = [...roster].sort((a, b) => b.base - a.base);
+      const idx = sorted.findIndex(b => b.name.toLowerCase().includes("howell central"));
+      const fhc = sorted[idx];
+      if (fhc.base > 0) {
+        recentCompleted.push({
+          comp,
+          result: { score: fhc.base, rank: idx + 1, totalBands: roster.length }
+        });
+      }
+    } catch (err) {
+      console.warn("[spotlight] Skipping completed", comp.name, err);
+    }
+  }
 
+  // ---- 2. Soonest upcoming contests FHC is registered for ----
+  const upcomingSorted = withDates
+    .filter(e => e.dateObj >= now)
+    .sort((a, b) => a.dateObj - b.dateObj);
+
+  const upcomingForFHC = [];
+  for (const comp of upcomingSorted) {
+    if (upcomingForFHC.length >= 2) break;
+    try {
+      const rows = await fetchSheetGrid(comp.id, comp.prelimsTab);
+      const parsed = parseFullWorkbookCSV(rows);
+      if (!rosterHasFHC(parsed.prelims)) {
+        console.log(`[spotlight] ${comp.year} ${comp.name}: FHC not registered, skipping`);
+        continue;
+      }
+      upcomingForFHC.push(comp);
+    } catch (err) {
+      console.warn("[spotlight] Skipping upcoming", comp.name, err);
+    }
+  }
+
+  // ---- 3. Assemble final tile list ----
+  const tiles = [
+    ...recentCompleted.map(x => ({ comp: x.comp, isPast: true, result: x.result })),
+    ...upcomingForFHC.map(comp => ({ comp, isPast: false, result: null }))
+  ];
+
+  if (tiles.length === 0) {
+    container.innerHTML = `
+      <div class="stat-card flex-1 min-w-[140px]">
+        <div class="stat-label">Spotlight</div>
+        <div class="stat-value text-slate-500 italic text-sm">No contests</div>
+        <div class="stat-sub">FHC has no recorded appearances</div>
+      </div>
+    `;
+    return;
+  }
+
+  // ---- 4. Render tile shells ----
   container.innerHTML = "";
-  selected.forEach(comp => {
-    const isPast = comp.dateObj < now;
+  tiles.forEach(({ comp, isPast }) => {
     const tile = document.createElement("div");
     tile.className = isPast
       ? "stat-card flex-1 min-w-[140px]"
       : "stat-card flex-1 min-w-[140px] border-violet-500/30 bg-violet-950/20";
     tile.dataset.key = `${comp.key}_${comp.year}`;
     const label = shortContestLabel(comp) + " '" + comp.year.slice(-2);
-
     tile.innerHTML = `
       <div class="stat-label ${isPast ? '' : 'text-violet-400'}">${label}${isPast ? '' : ' Proj.'}</div>
       <div class="stat-value text-slate-500 animate-pulse">--</div>
@@ -116,42 +176,42 @@ async function loadSpotlightTiles() {
     container.appendChild(tile);
   });
 
-  // Serial fill so shared sheet fetches are reused between the two upcoming
-  // projections instead of racing each other.
-  for (const comp of selected) {
+  // ---- 5. Fill tiles sequentially so shared sheet fetches are reused ----
+  for (const { comp, isPast, result } of tiles) {
     const tile = container.querySelector(`[data-key="${comp.key}_${comp.year}"]`);
     if (!tile) continue;
-    const isPast = comp.dateObj < now;
     try {
-      await fillSpotlightTile(tile, comp, isPast, allEntries);
+      if (isPast) {
+        fillCompletedTile(tile, comp, result);
+      } else {
+        await fillUpcomingTile(tile, comp, allEntries);
+      }
     } catch (err) {
       console.error("[loadSpotlightTiles] tile fill failed:", err);
     }
   }
 }
 
-async function fillSpotlightTile(tile, comp, isPast, allEntries) {
+function fillCompletedTile(tile, comp, result) {
   const label = shortContestLabel(comp) + " '" + comp.year.slice(-2);
-
-  if (isPast) {
-    const result = await getFHCResultForCompleted(comp);
-    if (result) {
-      tile.innerHTML = `
-        <div class="stat-label">${label}</div>
-        <div class="stat-value text-white font-mono">${result.score.toFixed(3)}</div>
-        <div class="stat-sub text-slate-400">#${result.rank} of ${result.totalBands}</div>
-      `;
-    } else {
-      tile.innerHTML = `
-        <div class="stat-label">${label}</div>
-        <div class="stat-value text-slate-500 italic">—</div>
-        <div class="stat-sub">No FHC result</div>
-      `;
-    }
+  if (!result) {
+    tile.innerHTML = `
+      <div class="stat-label">${label}</div>
+      <div class="stat-value text-slate-500 italic">—</div>
+      <div class="stat-sub">No result</div>
+    `;
     return;
   }
+  tile.innerHTML = `
+    <div class="stat-label">${label}</div>
+    <div class="stat-value text-white font-mono">${result.score.toFixed(3)}</div>
+    <div class="stat-sub text-slate-400">#${result.rank} of ${result.totalBands}</div>
+  `;
+}
 
-  // Upcoming — check cache, generate if missing
+async function fillUpcomingTile(tile, comp, allEntries) {
+  const label = shortContestLabel(comp) + " '" + comp.year.slice(-2);
+
   let cached = getCachedProjectionResult(comp);
   if (!cached) {
     tile.innerHTML = `
@@ -163,7 +223,7 @@ async function fillSpotlightTile(tile, comp, isPast, allEntries) {
       await generateAndCacheProjection(comp, allEntries);
       cached = getCachedProjectionResult(comp);
     } catch (err) {
-      console.error("[fillSpotlightTile projection]", err);
+      console.error("[fillUpcomingTile projection]", err);
     }
   }
 
