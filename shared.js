@@ -1,8 +1,5 @@
 // =============================================================================
 // Shared Fetching, Parsing, and Projection Cache
-// Loaded by index.html, competition.html, and competitions.html.
-// Depends on ai.js (for generateFieldProjections, hashData, getCache, setCache,
-// bandNameMatches) being loaded first.
 // =============================================================================
 
 const MASTER_INDEX_SPREADSHEET_ID = "106s_uuX5YOXAS_cXPCqj4HaO69DK8wHMWGevKUhTWd0";
@@ -90,9 +87,6 @@ async function fetchMasterDirectory() {
   return entries;
 }
 
-// =============================================================================
-// Sheet Fetcher — 3-tier cache (in-memory → localStorage → network)
-// =============================================================================
 const _sheetCache = new Map();
 
 async function fetchSheetGrid(sheetId, sheetName) {
@@ -138,16 +132,13 @@ async function fetchSheetGrid(sheetId, sheetName) {
     try {
       localStorage.setItem(lsKey, payload);
     } catch (e2) {
-      console.warn("[sheet-cache] still failed — persistence disabled for this sheet");
+      console.warn("[sheet-cache] still failed");
     }
   }
 
   return rows;
 }
 
-// =============================================================================
-// Cache utilities
-// =============================================================================
 function clearAllCaches() {
   const removed = { sheets: 0, ai: 0, bust: 0, proj: 0 };
   Object.keys(localStorage).forEach(k => {
@@ -182,13 +173,9 @@ function clearContestSheetCache(target) {
   if (memKeyFinals) {
     _sheetCache.delete(memKeyFinals);
     localStorage.removeItem(`sheet_${memKeyFinals}`);
-    console.log(`[refresh] Cleared memory + localStorage for ${memKeyFinals}`);
   }
 }
 
-// =============================================================================
-// Full workbook parser
-// =============================================================================
 function parseFullWorkbookCSV(rows) {
   let currentBlock = "Prelims";
   let currentClass = "";
@@ -336,11 +323,6 @@ function parseFullWorkbookCSV(rows) {
   return { prelims, finals, hasFinalsInSheet: detectedFinals };
 }
 
-// =============================================================================
-// Field history gatherer — returns per-band history AND per-contest field
-// distributions. The distributions are what let the AI know that a 75 at BOA
-// STL is mid-pack, not top-15.
-// =============================================================================
 async function gatherFieldHistory(comp, allEntries, roster) {
   const now = new Date();
 
@@ -368,15 +350,12 @@ async function gatherFieldHistory(comp, allEntries, roster) {
     results.push(...batchResults);
   }
 
-  // Per-band history (existing behavior)
   const history = {};
   roster.forEach(b => history[b.name] = []);
 
-  // Field distribution context — one entry per past contest
   const fieldContext = [];
 
   for (const r of results) {
-    // --- Per-band history ---
     for (const band of r.roster) {
       const match = roster.find(rb => bandNameMatches(rb.name, band.name));
       if (match && band.base > 0) {
@@ -384,12 +363,12 @@ async function gatherFieldHistory(comp, allEntries, roster) {
           contest: r.entry.name,
           year: r.entry.year,
           date: r.entry.date,
-          score: band.base
+          score: band.base,
+          captions: band.captions || null
         });
       }
     }
 
-    // --- Field distribution for this contest ---
     const scored = r.roster.filter(b => b.base > 0).sort((a, b) => b.base - a.base);
     if (scored.length >= 5) {
       const scoreAt = (rank) => scored[rank - 1]?.base ?? null;
@@ -419,7 +398,6 @@ async function gatherFieldHistory(comp, allEntries, roster) {
     arr.sort((a, b) => parseLocalDate(a.date, a.year) - parseLocalDate(b.date, b.year))
   );
 
-  // Most recent first
   fieldContext.sort((a, b) => parseInt(b.year, 10) - parseInt(a.year, 10));
 
   const totalRows = Object.values(history).reduce((sum, arr) => sum + arr.length, 0);
@@ -428,9 +406,6 @@ async function gatherFieldHistory(comp, allEntries, roster) {
   return { history, fieldContext };
 }
 
-// =============================================================================
-// Shared projection cache and generator
-// =============================================================================
 function cacheProjectionResult(comp, result, roster, bust) {
   if (!result || !Array.isArray(result.projections)) return;
   const fhcProj = result.projections.find(p => p.name.toLowerCase().includes("howell central"));
@@ -472,7 +447,7 @@ function getCachedProjectionResult(comp) {
       return null;
     }
     if (typeof parsed.hasFinals === "boolean" && typeof comp.hasFinals === "boolean" && parsed.hasFinals !== comp.hasFinals) {
-      console.log(`[proj-cache] hasFinals changed for ${comp.key} ${comp.year}, discarding stale projection`);
+      console.log(`[proj-cache] hasFinals changed, discarding stale`);
       localStorage.removeItem(`proj_result_${comp.key}_${comp.year}`);
       return null;
     }
@@ -492,10 +467,10 @@ async function generateAndCacheProjection(comp, allEntries, onProgress) {
 
   const bust = getContestBust(comp.key, comp.year);
   const weekNum = Math.floor(Date.now() / (7 * 24 * 3600 * 1000));
-  // v2 prefix — bump so the new prompt doesn't reuse old cached responses
+  // v3 — new prose format, invalidate prior caches
   const kvCacheKey = bust !== "0"
-    ? `proj2-${comp.key}-${comp.year}-w${weekNum}-b${bust}`
-    : `proj2-${comp.key}-${comp.year}-w${weekNum}`;
+    ? `proj3-${comp.key}-${comp.year}-w${weekNum}-b${bust}`
+    : `proj3-${comp.key}-${comp.year}-w${weekNum}`;
 
   if (onProgress) onProgress("Running AI projection...");
   const result = await generateFieldProjections(comp, roster, history, fieldContext, kvCacheKey);
@@ -516,9 +491,6 @@ async function getFHCResultForCompleted(comp) {
   return { score: fhc.base, rank: idx + 1, totalBands: roster.length, classification: fhc.classification };
 }
 
-// =============================================================================
-// Small display helper used by the dashboard
-// =============================================================================
 function shortContestLabel(comp) {
   const name = comp.name || "";
   if (name.includes("BOA")) return "BOA STL";
