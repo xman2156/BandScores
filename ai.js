@@ -280,157 +280,226 @@ ${JSON.stringify(OUTLOOK_SCHEMA)}`;
 }
 
 // ---------------------------------------------------------------------------
-// Field projection prompt — minimal, lets the model reason freely
+// Chunked field projection
+// Each chunk is a focused analysis of ~10 bands with full context.
 // ---------------------------------------------------------------------------
-function buildFieldProjectionPrompt(comp, roster, history, fieldContext) {
-  const isSuperRegional = comp.name.toLowerCase().includes("super regional") || comp.name.toLowerCase().includes("boa");
-  const defaultFinalsSize = isSuperRegional ? 14 : (roster.length >= 16 ? 12 : 10);
-  const fieldSize = roster.length;
 
-  const bandBlocks = roster.map(b => {
-    const scores = history[b.name] || [];
-    if (scores.length === 0) {
-      return `${b.name} (${b.classification || "Unclassified"}):\n  - No historical scores on record.`;
+function buildBandHistoryBlock(band, history) {
+  const scores = history[band.name] || [];
+  if (scores.length === 0) {
+    return `${band.name} (${band.classification || "Unclassified"}):\n  - No historical scores on record.`;
+  }
+  const lines = scores.map(s => {
+    let line = `  - ${s.date || s.year} ${s.contest}: ${s.score.toFixed(3)}`;
+    if (s.captions && Object.keys(s.captions).length > 0) {
+      const c = s.captions;
+      const parts = [];
+      if (c.musicTotal != null) parts.push(`Mus ${c.musicTotal.toFixed(2)}`);
+      else if (c.musicInd != null && c.musicEns != null) parts.push(`Mus ${((c.musicInd + c.musicEns) / 2).toFixed(2)}`);
+      if (c.visualTotal != null) parts.push(`Vis ${c.visualTotal.toFixed(2)}`);
+      else if (c.visualInd != null && c.visualEns != null) parts.push(`Vis ${((c.visualInd + c.visualEns) / 2).toFixed(2)}`);
+      if (c.geTotal != null) parts.push(`GE ${c.geTotal.toFixed(2)}`);
+      if (parts.length > 0) line += ` [${parts.join(", ")}]`;
     }
-    const lines = scores.map(s => {
-      let line = `  - ${s.date || s.year} ${s.contest}: ${s.score.toFixed(3)}`;
-      if (s.captions && Object.keys(s.captions).length > 0) {
-        const c = s.captions;
-        const parts = [];
-        if (c.musicTotal != null) parts.push(`Mus ${c.musicTotal.toFixed(2)}`);
-        else if (c.musicInd != null && c.musicEns != null) parts.push(`Mus ${((c.musicInd + c.musicEns) / 2).toFixed(2)}`);
-        if (c.visualTotal != null) parts.push(`Vis ${c.visualTotal.toFixed(2)}`);
-        else if (c.visualInd != null && c.visualEns != null) parts.push(`Vis ${((c.visualInd + c.visualEns) / 2).toFixed(2)}`);
-        if (c.geTotal != null) parts.push(`GE ${c.geTotal.toFixed(2)}`);
-        if (parts.length > 0) line += ` [${parts.join(", ")}]`;
-      }
-      return line;
-    }).join("\n");
-    return `${b.name} (${b.classification || "Unclassified"}):\n${lines}`;
-  }).join("\n\n");
+    return line;
+  }).join("\n");
+  return `${band.name} (${band.classification || "Unclassified"}):\n${lines}`;
+}
 
-  const rosterList = roster.map((b, i) => `${i + 1}. ${b.name}${b.classification ? ` [${b.classification}]` : ""}`).join("\n");
-
+function buildFieldContextBlock(fieldContext) {
   const fmt = (v) => v == null ? "—" : v.toFixed(2);
-  const fieldContextText = fieldContext.length > 0
-    ? fieldContext.map(fc => {
-        const parts = [
-          `top=${fmt(fc.topScore)} (${fc.topBand})`,
-          `#5=${fmt(fc.rank5Score)}`,
-          `#10=${fmt(fc.rank10Score)}`,
-          `#15=${fmt(fc.rank15Score)}`,
-          `#20=${fmt(fc.rank20Score)}`
-        ];
-        if (fc.rank30Score != null) parts.push(`#30=${fmt(fc.rank30Score)}`);
-        parts.push(`median=${fmt(fc.medianScore)}`);
-        return `  ${fc.year} ${fc.contest} (${fc.totalBands} bands): ${parts.join(", ")}`;
-      }).join("\n")
-    : "  (No historical field distributions available)";
+  if (fieldContext.length === 0) return "  (No historical field distributions available)";
+  return fieldContext.map(fc => {
+    const parts = [
+      `top=${fmt(fc.topScore)} (${fc.topBand})`,
+      `#5=${fmt(fc.rank5Score)}`,
+      `#10=${fmt(fc.rank10Score)}`,
+      `#15=${fmt(fc.rank15Score)}`,
+      `#20=${fmt(fc.rank20Score)}`
+    ];
+    if (fc.rank30Score != null) parts.push(`#30=${fmt(fc.rank30Score)}`);
+    parts.push(`median=${fmt(fc.medianScore)}`);
+    return `  ${fc.year} ${fc.contest} (${fc.totalBands} bands): ${parts.join(", ")}`;
+  }).join("\n");
+}
 
-  return `Analyze every single band on every single sheet below. Take your time to do a full comprehensive analysis before giving your final leaderboard prediction for ${comp.name} ${comp.year}.
+function buildChunkPrompt(comp, fullRoster, chunkBands, history, fieldContext, chunkIndex, totalChunks) {
+  const isSuperRegional = comp.name.toLowerCase().includes("super regional") || comp.name.toLowerCase().includes("boa");
+  const defaultFinalsSize = isSuperRegional ? 14 : (fullRoster.length >= 16 ? 12 : 10);
 
-=== UPCOMING CONTEST ===
-${comp.name} (${comp.year}) — ${comp.loc}
-Date: ${comp.date || "(date not specified)"}
-Registered field: ${fieldSize} programs
-${comp.hasFinals ? `Format: top ${defaultFinalsSize} advance to finals` : "Format: single-round event"}
+  const fullRosterList = fullRoster.map((b, i) => `${i + 1}. ${b.name}${b.classification ? ` [${b.classification}]` : ""}`).join("\n");
+  const chunkHistory = chunkBands.map(b => buildBandHistoryBlock(b, history)).join("\n\n");
+  const fieldContextText = buildFieldContextBlock(fieldContext);
 
-=== REGISTERED FIELD ===
-${rosterList}
+  return `You are analyzing a portion of the field for an upcoming marching band contest. A separate analysis is handling the other bands. Your job: project the scores for YOUR assigned bands only, using the same analytical lens that will be applied across the full field.
 
-=== COMPREHENSIVE HISTORICAL DATA ===
-Every score each band has received in the database, with dates, contest names, and caption breakdowns where available.
+=== CONTEST PARAMETERS ===
+- Event: ${comp.name} (${comp.year})
+- Location: ${comp.loc}
+- Date: ${comp.date || "(date not specified)"}
+- Total field size: ${fullRoster.length} programs
+- ${comp.hasFinals ? `Format: top ${defaultFinalsSize} advance to finals` : "Format: single round"}
+- Your chunk: ${chunkIndex + 1} of ${totalChunks}
 
-${bandBlocks}
+=== FULL FIELD ROSTER (${fullRoster.length} bands) ===
+Every band that will be at this contest. Your bands are a subset.
+
+${fullRosterList}
+
+=== YOUR ASSIGNED BANDS ===
+Project scores for the following ${chunkBands.length} bands only:
+
+${chunkBands.map(b => `  • ${b.name}`).join("\n")}
+
+=== HISTORICAL DATA FOR YOUR BANDS ===
+Every score each of your bands has received, with dates, contest names, and caption breakdowns where available.
+
+${chunkHistory}
 
 === HISTORICAL FIELD DISTRIBUTIONS ===
-Actual score-to-rank maps from past contests at this and similar events. Use these to understand what a given score typically corresponds to in terms of placement.
+Actual score-to-rank maps from past editions of this contest and comparable events. These tell you what a given score typically corresponds to in terms of placement. Use them as context for calibrating your scores to the same scale as the rest of the field.
 
 ${fieldContextText}
 
 === TASK ===
 
-Predict the full preliminary-round leaderboard for ${comp.name} ${comp.year}. Rank every registered band from 1 to ${fieldSize} with a projected score for each. Scores must strictly decrease as rank increases.
+Predict a preliminary-round score for each of your ${chunkBands.length} assigned bands. Your scores will be merged with scores from the other chunks and ranked together, so calibrate carefully against the field distributions above.
 
-Write your analysis first, then output the final leaderboard in this format:
+Think about each band individually:
+- What has their trajectory been over the past few seasons?
+- How does their most recent score compare to their own historical baseline?
+- Where did they land at this contest (or a comparable one) in past years?
+- How do their recent results compare to the full field listed above?
 
-ANALYSIS: <your comprehensive analysis>
+Write a short analysis paragraph covering your chunk, then output your scores.
 
-LEADERBOARD:
-1. <Band Name> | <Score>
-2. <Band Name> | <Score>
-...through rank ${fieldSize}
+Your response must use this format:
 
-FINALS_SIZE: <number>
-FINALS_CUTOFF: <number>
+ANALYSIS: <2-4 sentences about your assigned bands and how they fit the broader field>
 
-Band names must match the registered field exactly. Scores should have at most two decimals. Every registered band must appear exactly once.`;
+SCORES:
+<Band Name> | <Score>
+<Band Name> | <Score>
+...one line per band
+
+Use the exact band names as listed. Scores numeric with at most two decimals.`;
 }
 
-// ---------------------------------------------------------------------------
-// Parser
-// ---------------------------------------------------------------------------
-function parseFieldProjectionText(text) {
-  const result = {
-    overview: "",
-    finalsSize: 0,
-    finalsCutoff: 0,
-    projections: []
-  };
+function parseChunkResponse(text) {
+  const out = { overview: "", scores: [] };
 
-  const overviewMatch = text.match(/ANALYSIS:\s*([\s\S]*?)(?=LEADERBOARD|FINALS_SIZE:|$)/i);
-  if (overviewMatch) result.overview = overviewMatch[1].trim();
+  const overviewMatch = text.match(/ANALYSIS:\s*([\s\S]*?)(?=SCORES:|$)/i);
+  if (overviewMatch) out.overview = overviewMatch[1].trim();
 
-  const extractRows = (section) => {
-    const rows = [];
-    const lines = section.split("\n");
+  const scoresMatch = text.match(/SCORES:\s*([\s\S]*)$/i);
+  if (scoresMatch) {
+    const lines = scoresMatch[1].split("\n");
     for (const line of lines) {
-      const m = line.match(/^\s*(\d+)\.\s*(.+?)\s*\|\s*([\d.]+)\s*(?:\|\s*(.*))?$/);
+      const m = line.match(/^\s*(.+?)\s*\|\s*([\d.]+)\s*$/);
       if (m) {
-        const rank = parseInt(m[1], 10);
-        const name = m[2].trim();
-        const score = parseFloat(m[3]);
-        const note = (m[4] || "").trim();
-        if (!isNaN(rank) && !isNaN(score)) {
-          rows.push({ name, projectedRank: rank, projectedScore: score, note });
+        const name = m[1].trim();
+        const score = parseFloat(m[2]);
+        if (name && !isNaN(score)) {
+          out.scores.push({ name, projectedScore: score, note: "" });
         }
       }
     }
-    return rows;
-  };
-
-  const part1Match = text.match(/LEADERBOARD_PART_1:\s*([\s\S]*?)(?=LEADERBOARD_PART_2:|FINALS_SIZE:|$)/i);
-  const part2Match = text.match(/LEADERBOARD_PART_2:\s*([\s\S]*?)(?=FINALS_SIZE:|FINALS_CUTOFF:|$)/i);
-  const singleMatch = text.match(/LEADERBOARD:\s*([\s\S]*?)(?=FINALS_SIZE:|FINALS_CUTOFF:|$)/i);
-
-  if (part1Match || part2Match) {
-    if (part1Match) result.projections.push(...extractRows(part1Match[1]));
-    if (part2Match) result.projections.push(...extractRows(part2Match[1]));
-  } else if (singleMatch) {
-    result.projections.push(...extractRows(singleMatch[1]));
   }
 
-  const finalsSizeMatch = text.match(/FINALS_SIZE:\s*(\d+)/i);
-  if (finalsSizeMatch) result.finalsSize = parseInt(finalsSizeMatch[1], 10);
+  return out;
+}
 
-  const finalsCutoffMatch = text.match(/FINALS_CUTOFF:\s*([\d.]+)/i);
-  if (finalsCutoffMatch) result.finalsCutoff = parseFloat(finalsCutoffMatch[1]);
+async function runChunksWithConcurrency(items, concurrency, fn) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
 
-  if (result.projections.length === 0) {
-    throw new Error("Failed to parse leaderboard from AI response. First 300 chars: " + text.slice(0, 300));
+  async function worker() {
+    while (true) {
+      const i = nextIndex++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i], i);
+    }
   }
 
-  result.projections.sort((a, b) => a.projectedRank - b.projectedRank);
+  const workers = [];
+  for (let i = 0; i < Math.min(concurrency, items.length); i++) {
+    workers.push(worker());
+  }
+  await Promise.all(workers);
+  return results;
+}
 
-  result.projections.forEach(p => {
-    if (result.finalsSize > 0) {
-      if (p.projectedRank <= result.finalsSize - 2) {
+async function generateFieldProjections(comp, roster, history, fieldContext, cacheKey = null) {
+  const CHUNK_SIZE = 10;
+  const CONCURRENCY = 3;
+
+  // Build chunks
+  const chunks = [];
+  for (let i = 0; i < roster.length; i += CHUNK_SIZE) {
+    chunks.push(roster.slice(i, i + CHUNK_SIZE));
+  }
+
+  console.log(`[ai] Analyzing ${roster.length} bands in ${chunks.length} chunks (concurrency: ${CONCURRENCY})`);
+
+  const chunkResults = await runChunksWithConcurrency(chunks, CONCURRENCY, async (chunk, idx) => {
+    const prompt = buildChunkPrompt(comp, roster, chunk, history, fieldContext, idx, chunks.length);
+    console.log(`[ai] Chunk ${idx + 1}/${chunks.length}: ${chunk.length} bands`);
+
+    const text = await callGemini(prompt, {
+      temperature: 0.2,
+      maxTokens: 8000,
+      asText: true
+    });
+
+    const parsed = parseChunkResponse(text);
+    console.log(`[ai] Chunk ${idx + 1}: parsed ${parsed.scores.length}/${chunk.length} scores`);
+
+    if (parsed.scores.length !== chunk.length) {
+      console.warn(`[ai] Chunk ${idx + 1} returned ${parsed.scores.length} scores, expected ${chunk.length}`);
+    }
+
+    return parsed;
+  });
+
+  // Merge all scores
+  const allProjections = [];
+  const overviews = [];
+  for (const cr of chunkResults) {
+    if (cr.overview) overviews.push(cr.overview);
+    for (const s of cr.scores) {
+      allProjections.push(s);
+    }
+  }
+
+  // Sanity check: did we get every band?
+  const missing = roster.filter(b => !allProjections.find(p => bandNameMatches(p.name, b.name)));
+  if (missing.length > 0) {
+    console.warn(`[ai] Missing projections for: ${missing.map(b => b.name).join(", ")}`);
+  }
+
+  // Sort by projected score descending to derive ranks
+  allProjections.sort((a, b) => b.projectedScore - a.projectedScore);
+  allProjections.forEach((p, i) => {
+    p.projectedRank = i + 1;
+  });
+
+  // Derive finals info
+  const isSuperRegional = comp.name.toLowerCase().includes("super regional") || comp.name.toLowerCase().includes("boa");
+  const finalsSize = comp.hasFinals ? (isSuperRegional ? 14 : (roster.length >= 16 ? 12 : 10)) : 0;
+  const finalsCutoff = finalsSize > 0 && allProjections.length >= finalsSize
+    ? allProjections[finalsSize - 1].projectedScore
+    : 0;
+
+  // Assign confidence and finals chance
+  allProjections.forEach(p => {
+    if (finalsSize > 0) {
+      if (p.projectedRank <= finalsSize - 2) {
         p.confidence = "high";
         p.finalsChance = 92;
-      } else if (p.projectedRank <= result.finalsSize) {
+      } else if (p.projectedRank <= finalsSize) {
         p.confidence = "medium";
         p.finalsChance = 55;
-      } else if (p.projectedRank <= result.finalsSize + 2) {
+      } else if (p.projectedRank <= finalsSize + 2) {
         p.confidence = "medium";
         p.finalsChance = 25;
       } else {
@@ -441,10 +510,19 @@ function parseFieldProjectionText(text) {
       p.confidence = "medium";
       p.finalsChance = 0;
     }
-    if (!p.note) p.note = "";
   });
 
-  return result;
+  console.log("[ai] Final merged leaderboard:");
+  allProjections.forEach(p => {
+    console.log(`  #${p.projectedRank.toString().padStart(2)} ${p.name.padEnd(30)} ${p.projectedScore.toFixed(2)}`);
+  });
+
+  return {
+    overview: overviews.join(" "),
+    finalsSize,
+    finalsCutoff,
+    projections: allProjections
+  };
 }
 
 async function generatePerformanceSummary(comp, fhc, roster, currentRound, priorSeasonScores) {
@@ -455,36 +533,4 @@ async function generatePerformanceSummary(comp, fhc, roster, currentRound, prior
 async function generateContestOutlook(comp, fhcProjection, priorSeasonScores, cacheKey = null, fhcRecentScores = [], fhcCaptions = null) {
   const prompt = buildOutlookPrompt(comp, fhcProjection, priorSeasonScores, fhcRecentScores, fhcCaptions);
   return await callGemini(prompt, { schema: OUTLOOK_SCHEMA, temperature: 0.4, maxTokens: 6000, cacheKey });
-}
-
-async function generateFieldProjections(comp, roster, history, fieldContext, cacheKey = null) {
-  const prompt = buildFieldProjectionPrompt(comp, roster, history, fieldContext);
-
-  let text;
-  try {
-    text = await callGemini(prompt, { temperature: 0.2, maxTokens: 24000, cacheKey, asText: true });
-  } catch (err) {
-    throw new Error(`Gemini call failed: ${err.message}`);
-  }
-
-  console.log(`[ai] Field projection response (${text.length} chars), first 800:`);
-  console.log(text.slice(0, 800));
-
-  const parsed = parseFieldProjectionText(text);
-  console.log(`[ai] Parsed ${parsed.projections.length} projections`);
-
-  console.log("[ai] Final leaderboard:");
-  parsed.projections.forEach(p => {
-    console.log(`  #${p.projectedRank.toString().padStart(2)} ${p.name.padEnd(30)} ${p.projectedScore.toFixed(2)}`);
-  });
-
-  const ranks = parsed.projections.map(p => p.projectedRank);
-  if (new Set(ranks).size !== ranks.length) {
-    console.warn(`[ai] Duplicate ranks detected`);
-  }
-  if (parsed.projections.length !== roster.length) {
-    console.warn(`[ai] Expected ${roster.length} bands, got ${parsed.projections.length}`);
-  }
-
-  return parsed;
 }
