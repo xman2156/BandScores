@@ -1,42 +1,8 @@
 // =============================================================================
-// Dashboard — Live Master Directory + Recent Contest + FHC Trajectory
+// Dashboard — uses shared.js for all fetching/parsing/projection logic
 // =============================================================================
 
-const MASTER_INDEX_SPREADSHEET_ID = "106s_uuX5YOXAS_cXPCqj4HaO69DK8wHMWGevKUhTWd0";
-
 let fhcChartInstance = null;
-
-// ---------------------------------------------------------------------------
-// Shared helpers (mirrors competition.js)
-// ---------------------------------------------------------------------------
-function extractDateFromTab(tabName) {
-  if (!tabName) return "";
-  const m = tabName.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
-  if (!m) return "";
-  let y = m[3];
-  if (y.length === 2) y = "20" + y;
-  return `${m[1]}/${m[2]}/${y}`;
-}
-
-function parseLocalDate(dateStr, fallbackYear) {
-  if (!dateStr) return new Date(`${fallbackYear}-10-31T23:59:59`);
-  const parts = dateStr.trim().split(/[-/]/);
-  if (parts.length === 3) {
-    let y, m, d;
-    if (parts[0].length === 4) {
-      y = parseInt(parts[0], 10);
-      m = parseInt(parts[1], 10) - 1;
-      d = parseInt(parts[2], 10);
-    } else {
-      m = parseInt(parts[0], 10) - 1;
-      d = parseInt(parts[1], 10);
-      y = parseInt(parts[2], 10);
-      if (y < 100) y += 2000;
-    }
-    return new Date(y, m, d, 23, 59, 59);
-  }
-  return new Date(dateStr);
-}
 
 function formatShortDate(dateStr) {
   const d = dateStr instanceof Date ? dateStr : parseLocalDate(dateStr, new Date().getFullYear());
@@ -44,50 +10,7 @@ function formatShortDate(dateStr) {
   return `${months[d.getMonth()]} ${d.getDate()}`;
 }
 
-async function fetchMasterDirectory() {
-  const endpoint = `https://docs.google.com/spreadsheets/d/${MASTER_INDEX_SPREADSHEET_ID}/gviz/tq?tqx=out:csv&_cb=${Date.now()}`;
-  const res = await fetch(endpoint);
-  if (!res.ok) throw new Error(`Master directory HTTP ${res.status}`);
-  const csv = await res.text();
-  const parsed = Papa.parse(csv, { header: true, skipEmptyLines: true });
-
-  const entries = (parsed.data || []).map(r => {
-    const hasFinalsStr = (r["Has Finals"] || r["hasFinals"] || "yes").toString().toLowerCase();
-    const prelimsTab = (r["Prelims Tab"] || r["Tab Name"] || r["Tab"] || "").trim();
-    const dateFromSheet = (r["Date"] || "").trim();
-    const dateFromTab = extractDateFromTab(prelimsTab);
-
-    return {
-      name: r["Contest Name"] || r["Name"] || "Contest",
-      key: (r["Event Key"] || r["eventKey"] || r["Key"] || "").trim().toLowerCase(),
-      loc: r["Location"] || r["City"] || "Location Pending",
-      year: (r["Year"] || "").toString().trim(),
-      date: dateFromSheet || dateFromTab,
-      prelimsTab: prelimsTab,
-      finalsTab: (r["Finals Tab"] || "").trim(),
-      id: (r["Spreadsheet ID"] || r["spreadsheetId"] || "").trim(),
-      hasFinals: ["yes", "true", "1"].includes(hasFinalsStr)
-    };
-  }).filter(c => c.key && c.id);
-
-  if (entries.length === 0) throw new Error("Directory empty");
-  return entries;
-}
-
-async function fetchSheetGrid(sheetId, sheetName) {
-  const params = sheetName ? `&sheet=${encodeURIComponent(sheetName)}` : "";
-  const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv${params}&_cb=${Date.now()}`;
-  const res = await fetch(url);
-  const csv = await res.text();
-  const parsed = Papa.parse(csv, { skipEmptyLines: false });
-  return parsed.data.map(r =>
-    (r || []).map(c => (c || "").toString().trim().replace(/\u00a0/g, " "))
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Slim parser — we only need band name + total here (captions live on the contest page)
-// ---------------------------------------------------------------------------
+// Lightweight parser for the recent-scores tile — total score + name only
 function parseSheetForDashboard(rows) {
   const out = [];
   const forbidden = ["music performance","visual performance","general effect","judge panel",
@@ -130,7 +53,138 @@ function parseSheetForDashboard(rows) {
 }
 
 // ---------------------------------------------------------------------------
-// Tile 1 — Recent Scores (from most recent completed contest)
+// Spotlight Tiles (FHC) — reads from cached projections, generates on miss
+// ---------------------------------------------------------------------------
+async function loadSpotlightTiles() {
+  const container = document.getElementById("spotlightTiles");
+  if (!container) return;
+
+  container.innerHTML = Array(4).fill(`
+    <div class="stat-card flex-1 min-w-[140px] animate-pulse">
+      <div class="stat-label">Loading…</div>
+      <div class="stat-value text-slate-600">--</div>
+      <div class="stat-sub text-slate-600">Fetching contests</div>
+    </div>
+  `).join("");
+
+  let allEntries;
+  try {
+    allEntries = await fetchMasterDirectory();
+  } catch (err) {
+    console.error("[loadSpotlightTiles] Directory fetch failed:", err);
+    container.innerHTML = `
+      <div class="stat-card flex-1 min-w-[140px]">
+        <div class="stat-label">Spotlight</div>
+        <div class="stat-value text-red-400 text-sm">Unavailable</div>
+        <div class="stat-sub">Could not reach directory</div>
+      </div>
+    `;
+    return;
+  }
+
+  const now = new Date();
+  const withDates = allEntries.map(e => ({ ...e, dateObj: parseLocalDate(e.date, e.year) }));
+
+  const upcoming = withDates
+    .filter(e => e.dateObj >= now)
+    .sort((a, b) => a.dateObj - b.dateObj)
+    .slice(0, 2);
+
+  const completed = withDates
+    .filter(e => e.dateObj < now)
+    .sort((a, b) => b.dateObj - a.dateObj)
+    .slice(0, 2);
+
+  // Order: most recent completed first (left), then upcoming
+  const selected = [...completed, ...upcoming];
+
+  container.innerHTML = "";
+  selected.forEach(comp => {
+    const isPast = comp.dateObj < now;
+    const tile = document.createElement("div");
+    tile.className = isPast
+      ? "stat-card flex-1 min-w-[140px]"
+      : "stat-card flex-1 min-w-[140px] border-violet-500/30 bg-violet-950/20";
+    tile.dataset.key = `${comp.key}_${comp.year}`;
+    const label = shortContestLabel(comp) + " '" + comp.year.slice(-2);
+
+    tile.innerHTML = `
+      <div class="stat-label ${isPast ? '' : 'text-violet-400'}">${label}${isPast ? '' : ' Proj.'}</div>
+      <div class="stat-value text-slate-500 animate-pulse">--</div>
+      <div class="stat-sub">Loading…</div>
+    `;
+    container.appendChild(tile);
+  });
+
+  // Serial fill so shared sheet fetches are reused between the two upcoming
+  // projections instead of racing each other.
+  for (const comp of selected) {
+    const tile = container.querySelector(`[data-key="${comp.key}_${comp.year}"]`);
+    if (!tile) continue;
+    const isPast = comp.dateObj < now;
+    try {
+      await fillSpotlightTile(tile, comp, isPast, allEntries);
+    } catch (err) {
+      console.error("[loadSpotlightTiles] tile fill failed:", err);
+    }
+  }
+}
+
+async function fillSpotlightTile(tile, comp, isPast, allEntries) {
+  const label = shortContestLabel(comp) + " '" + comp.year.slice(-2);
+
+  if (isPast) {
+    const result = await getFHCResultForCompleted(comp);
+    if (result) {
+      tile.innerHTML = `
+        <div class="stat-label">${label}</div>
+        <div class="stat-value text-white font-mono">${result.score.toFixed(3)}</div>
+        <div class="stat-sub text-slate-400">#${result.rank} of ${result.totalBands}</div>
+      `;
+    } else {
+      tile.innerHTML = `
+        <div class="stat-label">${label}</div>
+        <div class="stat-value text-slate-500 italic">—</div>
+        <div class="stat-sub">No FHC result</div>
+      `;
+    }
+    return;
+  }
+
+  // Upcoming — check cache, generate if missing
+  let cached = getCachedProjectionResult(comp);
+  if (!cached) {
+    tile.innerHTML = `
+      <div class="stat-label text-violet-400">${label} Proj.</div>
+      <div class="stat-value text-violet-300 font-mono animate-pulse">…</div>
+      <div class="stat-sub text-violet-400">Generating AI projection</div>
+    `;
+    try {
+      await generateAndCacheProjection(comp, allEntries);
+      cached = getCachedProjectionResult(comp);
+    } catch (err) {
+      console.error("[fillSpotlightTile projection]", err);
+    }
+  }
+
+  if (cached && cached.fhcProjection) {
+    const p = cached.fhcProjection;
+    tile.innerHTML = `
+      <div class="stat-label text-violet-400">${label} Proj.</div>
+      <div class="stat-value text-violet-300 font-mono">${p.projectedScore.toFixed(2)}</div>
+      <div class="stat-sub text-violet-400">#${p.projectedRank} projected · ${p.confidence}</div>
+    `;
+  } else {
+    tile.innerHTML = `
+      <div class="stat-label text-violet-400">${label} Proj.</div>
+      <div class="stat-value text-slate-500 italic">—</div>
+      <div class="stat-sub">Not available</div>
+    `;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Recent Scores Tile
 // ---------------------------------------------------------------------------
 async function loadRecentScores() {
   const tbody = document.getElementById("scoresTableBody");
@@ -157,9 +211,7 @@ async function loadRecentScores() {
     const parsed = parseSheetForDashboard(rows);
     const top = parsed.sort((a, b) => b.base - a.base).slice(0, 7);
 
-    if (titleEl) {
-      titleEl.textContent = `Recent Scores (${formatShortDate(recent.date)})`;
-    }
+    if (titleEl) titleEl.textContent = `Recent Scores (${formatShortDate(recent.date)})`;
 
     tbody.innerHTML = "";
     top.forEach(band => {
@@ -182,7 +234,7 @@ async function loadRecentScores() {
 }
 
 // ---------------------------------------------------------------------------
-// Tile 2 — Upcoming Contests
+// Upcoming Contests Tile
 // ---------------------------------------------------------------------------
 async function loadUpcomingContests() {
   const container = document.getElementById("upcomingList");
@@ -226,13 +278,13 @@ async function loadUpcomingContests() {
 }
 
 // ---------------------------------------------------------------------------
-// Tile 4 — FHC Trajectory Chart (live from BOA STL sheets across years)
+// FHC BOA STL Trajectory Chart
 // ---------------------------------------------------------------------------
 async function loadFhcChart() {
   const ctx = document.getElementById("fhcChart")?.getContext("2d");
   if (!ctx) return;
 
-  let labels = [], totals = [], musicAverages = [], visualAverages = [];
+  let labels = [], totals = [];
 
   try {
     const directory = await fetchMasterDirectory();
@@ -250,9 +302,6 @@ async function loadFhcChart() {
         if (fhc) {
           labels.push(`${entry.year} Prelims`);
           totals.push(fhc.base);
-          // Derive music/visual averages from the raw row — approximate:
-          musicAverages.push(null);
-          visualAverages.push(null);
         }
       } catch (e) {
         console.warn(`[loadFhcChart] Skipping ${entry.year}:`, e);
@@ -308,7 +357,7 @@ async function loadFhcChart() {
 }
 
 // ---------------------------------------------------------------------------
-// Sync button behavior
+// Sync Button
 // ---------------------------------------------------------------------------
 function wireSyncButton() {
   const btn = document.getElementById("syncButton");
@@ -322,6 +371,7 @@ function wireSyncButton() {
     await Promise.all([
       loadRecentScores(),
       loadUpcomingContests(),
+      loadSpotlightTiles(),
       loadFhcChart()
     ]);
 
@@ -345,5 +395,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   loadRecentScores();
   loadUpcomingContests();
+  loadSpotlightTiles();
   loadFhcChart();
 });

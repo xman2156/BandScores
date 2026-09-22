@@ -16,7 +16,6 @@
 
   <div class="max-w-[1440px] mx-auto space-y-6">
 
-    <!-- Top Navigation / Real-time Bar -->
     <header class="flex flex-col md:flex-row items-start md:items-center justify-between border-b border-slate-800 pb-5 gap-4">
       <div>
         <div class="flex items-center gap-2">
@@ -36,7 +35,6 @@
       </div>
     </header>
 
-    <!-- FHC Strategic Command Tile -->
     <section class="rounded-2xl bg-gradient-to-r from-blue-950/70 via-slate-900 to-indigo-950/80 border border-blue-500/30 p-6 relative overflow-hidden shadow-2xl">
       <div class="absolute -right-12 -bottom-12 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
       
@@ -48,39 +46,16 @@
           </div>
           <h2 class="text-2xl font-black tracking-tight text-white">FHC Campaign Projections & Standings</h2>
           <p class="text-xs sm:text-sm text-slate-300">
-            Baseline derived from live contest data, projected against historical progression across the Lafayette CoC, Renegade Review, and BOA St. Louis.
+            Recent results and AI-projected outcomes, pulled live from each competition's dedicated page.
           </p>
         </div>
 
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 w-full lg:w-auto">
-          <div class="stat-card">
-            <div class="stat-label">MEMC '26</div>
-            <div class="stat-value text-white">66.050</div>
-            <div class="stat-sub">Class AAA</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Tiger Ambush '26</div>
-            <div class="stat-value text-white">71.800</div>
-            <div class="stat-sub text-emerald-400">Class AAAA</div>
-          </div>
-          <div class="stat-card border-indigo-500/30 bg-indigo-950/20">
-            <div class="stat-label text-indigo-400">Renegade Proj.</div>
-            <div class="stat-value text-indigo-300">75.20</div>
-            <div class="stat-sub text-indigo-400">Oct 10 Projection</div>
-          </div>
-          <div class="stat-card border-emerald-500/30 bg-emerald-950/20">
-            <div class="stat-label text-emerald-400">BOA STL Target</div>
-            <div class="stat-value text-emerald-300">74.50+</div>
-            <div class="stat-sub text-emerald-400">Class AA Semi Cutoff</div>
-          </div>
-        </div>
+        <div id="spotlightTiles" class="flex flex-wrap gap-4 w-full lg:w-auto"></div>
       </div>
     </section>
 
-    <!-- Core Modular Grid -->
     <main class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
 
-      <!-- Tile 1: Recent Ingested Results (LIVE) -->
       <section class="dashboard-tile">
         <div>
           <div class="flex items-center justify-between mb-3">
@@ -107,7 +82,6 @@
         <p class="tile-footer">Top results from the most recent completed contest.</p>
       </section>
 
-      <!-- Tile 2: Upcoming Calendar (LIVE) -->
       <section class="dashboard-tile">
         <div>
           <div class="flex items-center justify-between mb-3">
@@ -122,13 +96,11 @@
           </div>
 
           <div class="space-y-3" id="upcomingList">
-            <!-- Injected by app.js -->
           </div>
         </div>
         <p class="tile-footer">Click any event for live boards, or "View All Comps" for full multi-year archives.</p>
       </section>
 
-      <!-- Tile 3: Growth Trajectory Projections -->
       <section class="dashboard-tile">
         <div>
           <div class="flex items-center justify-between mb-3">
@@ -150,7 +122,6 @@
         <p class="tile-footer">Dynamic model: recalibrates automatically when sheet inputs update.</p>
       </section>
 
-      <!-- Tile 4: FHC Caption Evolution Chart (LIVE) -->
       <section class="dashboard-tile md:col-span-2">
         <div>
           <div class="flex items-center justify-between mb-2">
@@ -169,7 +140,6 @@
         </div>
       </section>
 
-      <!-- Tile 5: Data Integration Diagnostic -->
       <section class="dashboard-tile">
         <div>
           <div class="flex items-center justify-between mb-3">
@@ -201,6 +171,9 @@
     </main>
   </div>
 
+  <script src="config.js"></script>
+  <script src="ai.js"></script>
+  <script src="shared.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
