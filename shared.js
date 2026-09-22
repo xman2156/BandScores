@@ -62,13 +62,15 @@ function parseLocalDate(dateStr, fallbackYear) {
 
 async function fetchMasterDirectory() {
   const endpoint = `https://docs.google.com/spreadsheets/d/${MASTER_INDEX_SPREADSHEET_ID}/gviz/tq?tqx=out:csv&_cb=${Date.now()}`;
-  const res = await fetch(endpoint);
+  // cache: "no-store" defeats browser HTTP caching for this request. The _cb
+  // query param handles Google's CDN; this handles the browser.
+  const res = await fetch(endpoint, { cache: "no-store" });
   if (!res.ok) throw new Error(`Master directory HTTP ${res.status}`);
   const csv = await res.text();
   const parsed = Papa.parse(csv, { header: true, skipEmptyLines: true });
 
   const entries = (parsed.data || []).map(r => {
-    const hasFinalsStr = (r["Has Finals"] || r["hasFinals"] || "yes").toString().toLowerCase();
+    const hasFinalsStr = (r["Has Finals"] || r["hasFinals"] || "yes").toString().trim().toLowerCase();
     const prelimsTab = (r["Prelims Tab"] || r["Tab Name"] || r["Tab"] || "").trim();
     const dateFromSheet = (r["Date"] || "").trim();
     const dateFromTab = extractDateFromTab(prelimsTab);
@@ -81,7 +83,8 @@ async function fetchMasterDirectory() {
       prelimsTab: prelimsTab,
       finalsTab: (r["Finals Tab"] || "").trim(),
       id: (r["Spreadsheet ID"] || r["spreadsheetId"] || "").trim(),
-      hasFinals: ["yes", "true", "1"].includes(hasFinalsStr)
+      hasFinals: ["yes", "true", "1"].includes(hasFinalsStr),
+      _hasFinalsRaw: hasFinalsStr
     };
   }).filter(c => c.key && c.id);
 
@@ -117,7 +120,7 @@ async function fetchSheetGrid(sheetId, sheetName) {
   console.log(`[sheet-cache] MISS ${sheetName || sheetId}`);
   const params = sheetName ? `&sheet=${encodeURIComponent(sheetName)}` : "";
   const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv${params}&_cb=${Date.now()}`;
-  const res = await fetch(url);
+  const res = await fetch(url, { cache: "no-store" });
   const csv = await res.text();
   const parsed = Papa.parse(csv, { skipEmptyLines: false });
   const rows = parsed.data.map(r =>
@@ -400,7 +403,6 @@ function cacheProjectionResult(comp, result, roster, bust) {
   const fhcProj = result.projections.find(p => p.name.toLowerCase().includes("howell central"));
   if (!fhcProj) return;
 
-  // 1) Shared dashboard key
   try {
     localStorage.setItem(`proj_result_${comp.key}_${comp.year}`, JSON.stringify({
       generatedAt: Date.now(),
@@ -408,14 +410,13 @@ function cacheProjectionResult(comp, result, roster, bust) {
       overview: result.overview,
       finalsSize: result.finalsSize,
       finalsCutoff: result.finalsCutoff,
-      projectionCount: result.projections.length
+      projectionCount: result.projections.length,
+      hasFinals: comp.hasFinals === true
     }));
   } catch (e) {
     console.warn("[cacheProjectionResult] shared key write failed:", e);
   }
 
-  // 2) Competition page's hashed cache key — avoids regeneration when the user
-  //    visits the competition page after the dashboard triggered a projection.
   if (roster && typeof hashData === "function" && typeof setCache === "function") {
     const hashedKey = hashData({
       kind: "field-projection",
@@ -433,8 +434,14 @@ function getCachedProjectionResult(comp) {
     const raw = localStorage.getItem(`proj_result_${comp.key}_${comp.year}`);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    // Ignore stale > 14 days
     if (parsed.generatedAt && Date.now() - parsed.generatedAt > 14 * 24 * 3600 * 1000) {
+      localStorage.removeItem(`proj_result_${comp.key}_${comp.year}`);
+      return null;
+    }
+    // If the directory's hasFinals flag no longer matches what the cached
+    // projection was generated with, treat the cache as stale.
+    if (typeof parsed.hasFinals === "boolean" && typeof comp.hasFinals === "boolean" && parsed.hasFinals !== comp.hasFinals) {
+      console.log(`[proj-cache] hasFinals changed for ${comp.key} ${comp.year}, discarding stale projection`);
       localStorage.removeItem(`proj_result_${comp.key}_${comp.year}`);
       return null;
     }

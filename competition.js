@@ -143,21 +143,41 @@ async function handleRefreshClick() {
   const { event, year, round } = getUrlParams();
 
   try {
+    // 1. Re-fetch the Master Directory with no browser cache
+    console.log("[refresh] Fetching fresh Master Directory...");
     const allEntries = await fetchMasterDirectory();
     const contestSeasons = allEntries.filter(e => e.key === event);
     const target = contestSeasons.find(c => c.year === year) || contestSeasons[0];
 
     if (target) {
+      console.log("[refresh] Resolved directory entry:", {
+        name: target.name,
+        key: target.key,
+        year: target.year,
+        hasFinals: target.hasFinals,
+        hasFinalsRaw: target._hasFinalsRaw,
+        finalsTab: target.finalsTab
+      });
+
+      // 2. Clear the raw sheet rows for this contest
       clearContestSheetCache(target);
+
+      // 3. Bump the bust so the AI projection regenerates with fresh data
       const newBust = bumpContestBust(target.key, target.year);
       console.log(`[refresh] Bumped bust for ${target.key} ${target.year} → ${newBust}`);
-      // Clear the shared projection result for this contest
+
+      // 4. Clear the shared projection result so the dashboard picks up the new one
       localStorage.removeItem(`proj_result_${target.key}_${target.year}`);
+      console.log(`[refresh] Cleared proj_result_${target.key}_${target.year}`);
+    } else {
+      console.warn(`[refresh] No directory entry found for event="${event}" year="${year}"`);
     }
   } catch (err) {
-    console.error("[refresh] Failed to invalidate sheet cache:", err);
+    console.error("[refresh] Failed to invalidate cache:", err);
   }
 
+  // 5. Reload the view — this re-reads the master directory again (fresh),
+  //    refetches the sheet, and re-runs the projection.
   await loadCompetitionView(event, year, round);
 
   btn.disabled = false;
