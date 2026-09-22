@@ -152,13 +152,46 @@ async function fetchSheetGrid(sheetId, sheetName) {
 }
 
 function clearAllCaches() {
-  const removed = { sheets: 0, ai: 0 };
+  const removed = { sheets: 0, ai: 0, bust: 0 };
   Object.keys(localStorage).forEach(k => {
     if (k.startsWith("sheet_")) { localStorage.removeItem(k); removed.sheets++; }
     else if (k.startsWith("ai_")) { localStorage.removeItem(k); removed.ai++; }
+    else if (k.startsWith("bust_")) { localStorage.removeItem(k); removed.bust++; }
   });
   _sheetCache.clear();
-  console.log(`[cache] Cleared ${removed.sheets} sheet entries, ${removed.ai} AI entries`);
+  console.log(`[cache] Cleared ${removed.sheets} sheet, ${removed.ai} AI, ${removed.bust} bust entries`);
+}
+
+// =============================================================================
+// Per-contest cache bust. Incremented by the "Refresh Sheet" button to force
+// the AI field projection to regenerate (since roster names alone don't change
+// when only scores are updated in the source sheet).
+// =============================================================================
+function getContestBust(key, year) {
+  return localStorage.getItem(`bust_${key}_${year}`) || "0";
+}
+
+function bumpContestBust(key, year) {
+  const current = parseInt(getContestBust(key, year), 10);
+  const next = current + 1;
+  localStorage.setItem(`bust_${key}_${year}`, next.toString());
+  return next;
+}
+
+// Clear the current contest's raw sheet from both cache layers.
+function clearContestSheetCache(target) {
+  const memKeyPrelims = `${target.id}::${target.prelimsTab || ""}`;
+  const memKeyFinals = target.finalsTab ? `${target.id}::${target.finalsTab}` : null;
+
+  _sheetCache.delete(memKeyPrelims);
+  localStorage.removeItem(`sheet_${memKeyPrelims}`);
+  console.log(`[refresh] Cleared memory + localStorage for ${memKeyPrelims}`);
+
+  if (memKeyFinals) {
+    _sheetCache.delete(memKeyFinals);
+    localStorage.removeItem(`sheet_${memKeyFinals}`);
+    console.log(`[refresh] Cleared memory + localStorage for ${memKeyFinals}`);
+  }
 }
 
 function parseFullWorkbookCSV(rows) {
@@ -426,6 +459,50 @@ async function loadCompetitionView(eventKey, selectedYear, selectedRound) {
 }
 
 // =============================================================================
+// Manual Sheet Refresh (button handler)
+// =============================================================================
+async function handleRefreshClick() {
+  const btn = document.getElementById("refreshSheetBtn");
+  if (!btn || btn.disabled) return;
+
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.classList.add("opacity-70", "cursor-wait");
+  btn.innerHTML = `<i data-lucide="loader" class="w-3.5 h-3.5 animate-spin"></i> Refreshing...`;
+  lucide.createIcons();
+
+  const { event, year, round } = getUrlParams();
+
+  try {
+    // Find the target contest so we know which sheet to invalidate
+    const allEntries = await fetchMasterDirectory();
+    const contestSeasons = allEntries.filter(e => e.key === event);
+    const target = contestSeasons.find(c => c.year === year) || contestSeasons[0];
+
+    if (target) {
+      clearContestSheetCache(target);
+      const newBust = bumpContestBust(target.key, target.year);
+      console.log(`[refresh] Bumped bust for ${target.key} ${target.year} → ${newBust}`);
+    }
+  } catch (err) {
+    console.error("[refresh] Failed to invalidate sheet cache:", err);
+  }
+
+  // Reload the view. This refetches the sheet fresh and re-runs AI.
+  await loadCompetitionView(event, year, round);
+
+  btn.disabled = false;
+  btn.classList.remove("opacity-70", "cursor-wait");
+  btn.innerHTML = `<i data-lucide="check" class="w-3.5 h-3.5 text-emerald-400"></i> Refreshed`;
+  lucide.createIcons();
+
+  setTimeout(() => {
+    btn.innerHTML = original;
+    lucide.createIcons();
+  }, 2500);
+}
+
+// =============================================================================
 // AI Enrichment — FHC Spotlight (past contests only)
 // =============================================================================
 async function enrichFHCSpotlightPast(comp, year, currentRound, contestSeasons, allEntries) {
@@ -507,11 +584,14 @@ async function enrichProjectedStandings(comp, allEntries, selectedRound, contest
     : activeWorkbookData.finals;
   if (roster.length === 0) return;
 
+  const bust = getContestBust(comp.key, comp.year);
+
   const cacheKey = hashData({
     kind: "field-projection",
     comp: comp.key,
     year: comp.year,
-    roster: roster.map(b => b.name).sort()
+    roster: roster.map(b => b.name).sort(),
+    bust
   });
 
   const cached = getCache(cacheKey);
@@ -523,7 +603,9 @@ async function enrichProjectedStandings(comp, allEntries, selectedRound, contest
   showProjectionLoading();
 
   const weekNum = Math.floor(Date.now() / (7 * 24 * 3600 * 1000));
-  const kvCacheKey = `proj-${comp.key}-${comp.year}-w${weekNum}`;
+  const kvCacheKey = bust !== "0"
+    ? `proj-${comp.key}-${comp.year}-w${weekNum}-b${bust}`
+    : `proj-${comp.key}-${comp.year}-w${weekNum}`;
 
   try {
     const history = await gatherFieldHistory(comp, allEntries, roster);
@@ -1219,6 +1301,9 @@ document.addEventListener("DOMContentLoaded", () => {
   if (closeBtn) closeBtn.addEventListener("click", closeBandModal);
   if (modal) modal.addEventListener("click", (e) => { if (e.target === modal) closeBandModal(); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeBandModal(); });
+
+  const refreshBtn = document.getElementById("refreshSheetBtn");
+  if (refreshBtn) refreshBtn.addEventListener("click", handleRefreshClick);
 
   const { event, year, round } = getUrlParams();
   loadCompetitionView(event, year, round);
