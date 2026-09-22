@@ -280,20 +280,13 @@ ${JSON.stringify(OUTLOOK_SCHEMA)}`;
 }
 
 // ---------------------------------------------------------------------------
-// Field projection prompt — dates, sheet context, timing principles
+// Field projection prompt — minimal, lets the model reason freely
 // ---------------------------------------------------------------------------
 function buildFieldProjectionPrompt(comp, roster, history, fieldContext) {
   const isSuperRegional = comp.name.toLowerCase().includes("super regional") || comp.name.toLowerCase().includes("boa");
   const defaultFinalsSize = isSuperRegional ? 14 : (roster.length >= 16 ? 12 : 10);
   const fieldSize = roster.length;
-  const midpoint = Math.ceil(fieldSize / 2);
-  const secondHalfStart = midpoint + 1;
-  const useTwoParts = fieldSize > 30;
 
-  // Format the target contest date as a readable string
-  const targetDateStr = comp.date || "(date not specified)";
-
-  // Per-band history with dates and captions
   const bandBlocks = roster.map(b => {
     const scores = history[b.name] || [];
     if (scores.length === 0) {
@@ -334,94 +327,48 @@ function buildFieldProjectionPrompt(comp, roster, history, fieldContext) {
       }).join("\n")
     : "  (No historical field distributions available)";
 
-  const leaderboardFormat = useTwoParts
-    ? `LEADERBOARD_PART_1:
-1. <Band Name> | <Score> | <one-sentence note>
-2. <Band Name> | <Score> | <one-sentence note>
-...through rank ${midpoint}
+  return `Analyze every single band on every single sheet below. Take your time to do a full comprehensive analysis before giving your final leaderboard prediction for ${comp.name} ${comp.year}.
 
-LEADERBOARD_PART_2:
-${secondHalfStart}. <Band Name> | <Score> | <one-sentence note>
-${secondHalfStart + 1}. <Band Name> | <Score> | <one-sentence note>
-...through rank ${fieldSize}`
-    : `LEADERBOARD:
-1. <Band Name> | <Score> | <one-sentence note>
-2. <Band Name> | <Score> | <one-sentence note>
-...through rank ${fieldSize}`;
+=== UPCOMING CONTEST ===
+${comp.name} (${comp.year}) — ${comp.loc}
+Date: ${comp.date || "(date not specified)"}
+Registered field: ${fieldSize} programs
+${comp.hasFinals ? `Format: top ${defaultFinalsSize} advance to finals` : "Format: single-round event"}
 
-  return `You are an elite competitive marching band data analyst. Model the projected preliminary-round standings for an upcoming contest.
-
-Think carefully. Consider each band's trajectory, head-to-head results against the specific opponents registered here, how scoring scales differ between contests, and where each historical score falls in the calendar.
-
-=== CONTEST PARAMETERS ===
-- Event: ${comp.name} (${comp.year})
-- Location: ${comp.loc}
-- Contest Date: ${targetDateStr}
-- Field size: ${fieldSize} registered programs
-- Multi-Round: ${comp.hasFinals ? `YES — top ${defaultFinalsSize} advance to finals` : "NO — single round"}
-
-=== HISTORICAL FIELD DISTRIBUTIONS ===
-Actual score-to-rank maps from past contests. Use these as evidence of what a given score MEANS at each contest's sheet — they tell you the numeric range that typically corresponds to each rank band. If your projection puts a band at rank N with a score far outside the historical range for rank N, reconsider.
-
-${fieldContextText}
-
-=== SCORING SCALE AND TIMING CONSIDERATIONS ===
-
-Scoring scales vary by contest. Local invitationals and BOA-style contests evaluate bands on different sheets. Two scores that look identical numerically may not represent the same level of performance if they came from different sheet types.
-
-Timing within a season also matters. Bands typically improve over the course of a season as programs clean and expand. A score from mid-September and a score from late October are not directly comparable even on the same sheet.
-
-When projecting each band:
-- Use their own history on the target contest's sheet type as the primary anchor.
-- Use their current-season scores (from whatever sheet they were on) to gauge whether they're ahead of, on, or behind their usual pace at this point in the calendar.
-- When comparing two bands in the field, note the dates of their most recent scores. A score from a date close to the target contest carries more predictive weight than a score from weeks earlier. A score on a similar sheet type carries more weight than one on a different sheet.
-- When two bands in this field competed on the same day at comparable-level events, that head-to-head comparison is unusually direct and should be weighted heavily.
-- Trajectory matters: a band whose recent results show meaningful improvement over their own past performance should be projected near their new level, not held at their old one.
-
-=== REGISTERED FIELD (${fieldSize} PROGRAMS) ===
+=== REGISTERED FIELD ===
 ${rosterList}
 
-=== HISTORICAL RECORDS BY PROGRAM ===
-Chronological history with dates and available caption breakdowns.
+=== COMPREHENSIVE HISTORICAL DATA ===
+Every score each band has received in the database, with dates, contest names, and caption breakdowns where available.
 
 ${bandBlocks}
 
-=== ANALYTICAL TASK ===
+=== HISTORICAL FIELD DISTRIBUTIONS ===
+Actual score-to-rank maps from past contests at this and similar events. Use these to understand what a given score typically corresponds to in terms of placement.
 
-1. For each band, reason through their own trajectory, head-to-head results against the specific bands registered here, how their scores translate across sheet types, and where their scores fall in the calendar.
+${fieldContextText}
 
-2. Rank the full field from 1 to ${fieldSize}. Scores must strictly decrease as rank increases.
+=== TASK ===
 
-${comp.hasFinals ? `3. Identify the finals cutoff — the projected score of the band at rank #${defaultFinalsSize}.` : ""}
+Predict the full preliminary-round leaderboard for ${comp.name} ${comp.year}. Rank every registered band from 1 to ${fieldSize} with a projected score for each. Scores must strictly decrease as rank increases.
 
-4. Bands with no prior history: use the field distribution above to place them reasonably. Don't guess high.
+Write your analysis first, then output the final leaderboard in this format:
 
-=== OUTPUT FORMAT ===
+ANALYSIS: <your comprehensive analysis>
 
-Write a short analytical overview first, then output the leaderboard. Every band needs a one-sentence note explaining which scores and dates drove the projection.
-
-Your response must use EXACTLY this format:
-
-ANALYSIS: <3-5 sentence overview>
-
-${leaderboardFormat}
+LEADERBOARD:
+1. <Band Name> | <Score>
+2. <Band Name> | <Score>
+...through rank ${fieldSize}
 
 FINALS_SIZE: <number>
 FINALS_CUTOFF: <number>
 
-Rules:
-- Band names must match the registered roster exactly.
-- Scores numeric with at most two decimals.
-- Rank numbers sequential integers, no gaps.
-- Every registered band appears exactly once.
-- Notes must cite specific scores (with dates) that informed the projection.
-- If you notice your later scores drifting away from what the historical distributions suggest for those ranks, STOP and re-anchor before continuing.
-
-Begin with "ANALYSIS:" and nothing else before it.`;
+Band names must match the registered field exactly. Scores should have at most two decimals. Every registered band must appear exactly once.`;
 }
 
 // ---------------------------------------------------------------------------
-// Parser — extracts leaderboard rows and notes
+// Parser
 // ---------------------------------------------------------------------------
 function parseFieldProjectionText(text) {
   const result = {
@@ -434,7 +381,6 @@ function parseFieldProjectionText(text) {
   const overviewMatch = text.match(/ANALYSIS:\s*([\s\S]*?)(?=LEADERBOARD|FINALS_SIZE:|$)/i);
   if (overviewMatch) result.overview = overviewMatch[1].trim();
 
-  // Row format: "1. Band Name | 76.30 | note text here"
   const extractRows = (section) => {
     const rows = [];
     const lines = section.split("\n");
@@ -495,6 +441,7 @@ function parseFieldProjectionText(text) {
       p.confidence = "medium";
       p.finalsChance = 0;
     }
+    if (!p.note) p.note = "";
   });
 
   return result;
@@ -520,16 +467,15 @@ async function generateFieldProjections(comp, roster, history, fieldContext, cac
     throw new Error(`Gemini call failed: ${err.message}`);
   }
 
-  console.log(`[ai] Field projection response (${text.length} chars), first 500:`);
-  console.log(text.slice(0, 500));
+  console.log(`[ai] Field projection response (${text.length} chars), first 800:`);
+  console.log(text.slice(0, 800));
 
   const parsed = parseFieldProjectionText(text);
   console.log(`[ai] Parsed ${parsed.projections.length} projections`);
 
-  // Audit: dump every band's projected score with the note the model wrote
-  console.log("[ai] Per-band projections + notes:");
+  console.log("[ai] Final leaderboard:");
   parsed.projections.forEach(p => {
-    console.log(`  #${p.projectedRank.toString().padStart(2)} ${p.name.padEnd(30)} ${p.projectedScore.toFixed(2)}  — ${p.note || "(no note)"}`);
+    console.log(`  #${p.projectedRank.toString().padStart(2)} ${p.name.padEnd(30)} ${p.projectedScore.toFixed(2)}`);
   });
 
   const ranks = parsed.projections.map(p => p.projectedRank);
